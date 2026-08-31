@@ -1,0 +1,21 @@
+# Monkey — file esclusi dal repository | v1.0.0 (2026-08-31)
+#
+# Fuori: tutto cio' che si rigenera da solo (build, cache Gradle/Kotlin) e
+# tutto cio' che e' locale alla macchina che compila (local.properties porta
+# il percorso dell'Android SDK, diverso da un computer all'altro).
+#
+# Il keystore di firma (keystore/subitoplus.jks) resta fuori di proposito:
+# e' una chiave privata, non codice. Anche in un repository privato non
+# conviene metterla nella cronologia git — resta comunque nello zip dei
+# sorgenti consegnato a ogni release, quindi non si perde nulla tenendola
+# fuori da qui.
+
+build/
+.gradle/
+.kotlin/
+*.iml
+.idea/
+local.properties
+keystore/
+*.jks
+*.keystore

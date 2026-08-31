@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  v1.13.0 (2026-08-31) — sfondo_icona diventa il giallo banana/oro del nuovo
+  simbolo (la scimmia coi soldi in mano): ci sta bene sopra sia il marrone
+  della scimmia sia il verde delle banconote, ed e' anche lo sfondo dello
+  splash screen (vedi themes.xml), quindi cambia in entrambi i posti insieme.
+
+  [versione precedente, v0.5.0 del 2026-08-30]
+  <color name="sfondo_icona">#123B3F</color>
+  [fine versione precedente]
+-->
+<resources>
+    <color name="sfondo_icona">#F5A623</color>
+    <color name="sfondo_finestra">#F6F8F7</color>
+</resources>

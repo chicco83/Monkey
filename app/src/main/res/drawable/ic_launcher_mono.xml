@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Monkey — versione monocromatica dell'icona | v1.13.0 (2026-08-31)
+
+  Usata dai launcher con le icone a tema, che tingono il disegno con i colori
+  dello sfondo del telefono: serve una sagoma di un colore solo, senza il
+  contrasto fra marrone/crema/verde della versione a colori. Qui restano solo
+  le forme che reggono la lettura anche appiattite su una tinta sola: testa,
+  orecchie, occhi (come vuoti nella sagoma, altrimenti spariscono nella
+  tinta piatta), braccio teso e il mazzetto di banconote.
+
+  [versione precedente, v1.0.1 del 2026-08-30 — "il setaccio"]
+  <vector xmlns:android="http://schemas.android.com/apk/res/android"
+      android:width="108dp" android:height="108dp"
+      android:viewportWidth="108" android:viewportHeight="108">
+      <path android:pathData="M42,27 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+          android:fillColor="#FFFFFF" />
+      <path android:pathData="M66,27 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+          android:fillColor="#FFFFFF" />
+      <path android:pathData="M30,38 L78,38 L59,58 L59,73 L49,67 L49,58 Z"
+          android:strokeColor="#FFFFFF" android:strokeWidth="8"
+          android:strokeLineJoin="round" android:strokeLineCap="round" />
+      <path android:pathData="M54,83 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+          android:fillColor="#FFFFFF" />
+  </vector>
+  [fine versione precedente]
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- orecchie -->
+    <path android:pathData="M25,42 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0"
+        android:fillColor="#FFFFFF" />
+    <path android:pathData="M83,42 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0"
+        android:fillColor="#FFFFFF" />
+
+    <!-- testa -->
+    <path android:pathData="M54,52 m-28,0 a28,28 0 1,0 56,0 a28,28 0 1,0 -56,0"
+        android:fillColor="#FFFFFF" />
+
+    <!-- occhi, vuoti nella sagoma: altrimenti su una tinta piatta sparirebbero -->
+    <path android:pathData="M44,50 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0"
+        android:fillColor="#000000" />
+    <path android:pathData="M65,47 m-7.5,0 a7.5,7.5 0 1,0 15,0 a7.5,7.5 0 1,0 -15,0"
+        android:fillColor="#000000" />
+
+    <!-- braccio teso -->
+    <path android:pathData="M70,80 C79,67 84,49 86,33"
+        android:strokeColor="#FFFFFF" android:strokeWidth="13"
+        android:strokeLineCap="round" />
+
+    <!-- mazzetto di banconote -->
+    <group android:pivotX="83" android:pivotY="18" android:rotation="-14">
+        <path android:pathData="M71,10 L95,10 L95,25 L71,25 Z" android:fillColor="#FFFFFF" />
+    </group>
+    <group android:pivotX="83" android:pivotY="18" android:rotation="4">
+        <path android:pathData="M71,13 L95,13 L95,28 L71,28 Z" android:fillColor="#FFFFFF" />
+    </group>
+
+    <!-- pugno -->
+    <path android:pathData="M86,30 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+        android:fillColor="#FFFFFF" />
+</vector>
