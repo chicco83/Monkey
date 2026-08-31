@@ -13,11 +13,9 @@ package it.monkey.app
  * resto della schermata: e' cosi' che il rifacimento procede un pezzo per volta.
  */
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
@@ -25,6 +23,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DividerDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -64,7 +64,9 @@ data class StatoBarra(
     val titoloPagina: String,
     val riga: String,
     /** null = nessun caricamento; -1 = attesa senza percentuale; 0..100 = avanzamento */
-    val avanzamento: Int?
+    val avanzamento: Int?,
+    /** v1.15.0 — il banner "tocca ⋮ e poi Sito per accedere", solo al primo avvio. */
+    val mostraGuida: Boolean
 )
 
 /** Le azioni che la barra puo' scatenare. */
@@ -89,7 +91,9 @@ class AzioniBarra(
     // v0.7.0 — comandi della navigazione web
     val ricarica: () -> Unit,
     val condividi: () -> Unit,
-    val apriNelBrowser: () -> Unit
+    val apriNelBrowser: () -> Unit,
+    /** v1.15.0 — chiude il banner di guida al login, per sempre. */
+    val chiudiGuida: () -> Unit
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -178,6 +182,47 @@ fun BarraSuperiore(stato: StatoBarra, azioni: AzioniBarra) {
                     Menu(stato, azioni)
                 }
             )
+
+            /*
+             * v1.15.0 — banner di guida al login, solo al primo avvio.
+             *
+             * L'account su Subito o Vinted si usa toccando "Sito" nel menu qui
+             * sotto: apre quel sito dentro l'app, dove ci si accede come si
+             * farebbe dal browser. Non e' ovvio la prima volta — i tre puntini
+             * non dicono "e' qui che si fa il login" — quindi lo si indica una
+             * volta sola, subito sotto la barra dov'e' il menu, e poi si sparisce
+             * per sempre: alla chiusura esplicita (la ✕) o non appena l'utente
+             * tocca davvero "Sito" (vedi MainActivity, cambiaFonte).
+             */
+            if (stato.mostraGuida) {
+                Card(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Row(
+                        Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Per accedere con il tuo account, tocca ⋮ qui sopra e poi «Sito» " +
+                                    "per aprire Subito o Vinted e fare il login.",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        IconButton(onClick = azioni.chiudiGuida) {
+                            Icon(
+                                Icons.Filled.Close, "Chiudi il suggerimento",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
 
             // Avanzamento: sottile, subito sotto la barra, con lo stesso accento del tema.
             when {

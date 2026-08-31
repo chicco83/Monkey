@@ -34,8 +34,21 @@ android {
         applicationId = "it.monkey.app"
         minSdk = 29            // Android 10: richiesto da MediaStore.Downloads usato per l'export
         targetSdk = 34         // dispositivo di riferimento: Android 13 (API 33)
-        versionCode = 38
-        versionName = "1.14.0"  // <-- aggiornare a ogni consegna
+        /*
+         * v1.16.0 (2026-08-31) — il preferito su Vinted tornava a dare 403 in
+         * aggiunta E in rimozione anche con le intestazioni della v1.11.0 attive.
+         * Vedi il commento su azione() in MotoreRicerca.kt: la sessione WebView
+         * di Vinted resta aperta a lungo e puo' portare un token CSRF non piu'
+         * aggiornato alla build corrente del sito. Ora, su 403 di una chiamata
+         * con csrf=true, si ricarica la pagina una volta sola e si riprova.
+         *
+         * --- versione precedente ---
+         * versionCode = 39
+         * versionName = "1.15.0"
+         * --- fine versione precedente ---
+         */
+        versionCode = 40
+        versionName = "1.16.0"  // <-- aggiornare a ogni consegna
     }
 
     // Firma: keystore generato per il progetto, da conservare per tutti gli aggiornamenti futuri.

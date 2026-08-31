@@ -80,10 +80,44 @@ class MotoreRicerca(
      * dell'utente. E' cosi' che si mette un preferito senza che la richiesta
      * si distingua da quella che farebbe il sito.
      */
-    fun azione(f: Fonte, c: Chiamata, esito: (stato: Int, corpo: String) -> Unit) {
+    /*
+     * v1.16.0 (2026-08-31) — CORREZIONE: il preferito su Vinted tornava a dare
+     * 403 "access_denied" sia in aggiunta che in rimozione, con "hdr:2" (le
+     * due intestazioni della v1.11.0) confermate presenti nella diagnostica.
+     * Quindi non erano le intestazioni mancanti: la sessione WebView di Vinted
+     * si crea UNA VOLTA all'avvio (sessione(f) -> w.loadUrl la prima volta) e
+     * resta viva in background per tutta la vita dell'app. Il token CSRF che
+     * l'app legge lo prende ogni volta dal DOM di quella pagina (document.scripts),
+     * corretto — ma quel DOM e' quello caricato all'avvio: se nel frattempo Vinted
+     * pubblica una nuova versione del sito (il token e' legato alla build, vedi
+     * v1.11.0), il valore incorporato nella pagina vecchia non e' piu' quello che
+     * il server si aspetta. Il sintomo torna: stesso errore su add E rimozione,
+     * perche' la verifica del token non distingue le due direzioni.
+     *
+     * Rimedio: quando una chiamata con csrf=true torna 403, si ricarica UNA
+     * VOLTA la pagina della fonte (una pagina fresca porta il token attuale) e
+     * si riprova la stessa richiesta. Se fallisce ancora dopo il ricaricamento,
+     * il messaggio d'errore che arriva a schermo porta il prefisso "[ricaricato]":
+     * dice a chi legge il prossimo avviso che il tentativo di auto-correzione
+     * e' gia' scattato e non ha bastato — segno che la causa e' un'altra (per
+     * esempio una protezione anti-bot sul sito, non piu' un token vecchio).
+     */
+    /*
+     * v1.16.0 — "tentativoRicarica" sta PRIMA di "esito" e non dopo, apposta:
+     * "esito" deve restare l'ULTIMO parametro, cosi' le chiamate gia' scritte
+     * come motore.azione(f, c) { stato, corpo -> ... } (lambda finale fuori
+     * dalle parentesi) continuano a combaciare con "esito" invece che con
+     * "tentativoRicarica" — a chi chiama da fuori questo parametro resta
+     * invisibile, avendo un valore di default.
+     */
+    fun azione(
+        f: Fonte, c: Chiamata,
+        tentativoRicarica: Boolean = false,
+        esito: (stato: Int, corpo: String) -> Unit
+    ) {
         val w = sessione(f)
         if (pronte[f.nome] != true) {
-            ui.postDelayed({ azione(f, c, esito) }, 400)
+            ui.postDelayed({ azione(f, c, tentativoRicarica, esito) }, 400)
             return
         }
         val id = contatore++
@@ -92,12 +126,30 @@ class MotoreRicerca(
          * v1.6.0 — il ripiego. Se la prima strada non risponde 2xx si prova la
          * seconda, e all'esterno arriva un esito solo: chi chiama non deve
          * sapere quale indirizzo ha funzionato, deve sapere se ha funzionato.
+         *
+         * --- versione precedente (fino alla v1.15.0) ---
+         * azioni[id] = { stato, corpo ->
+         *     if (stato !in 200..299 && c.ripiego != null) {
+         *         diagnostica.append("[${f.nome}] ${c.url} -> $stato, provo il ripiego\n")
+         *         azione(f, c.ripiego, esito)
+         *     } else esito(stato, corpo)
+         * }
+         * --- fine versione precedente ---
          */
         azioni[id] = { stato, corpo ->
             if (stato !in 200..299 && c.ripiego != null) {
                 diagnostica.append("[${f.nome}] ${c.url} -> $stato, provo il ripiego\n")
-                azione(f, c.ripiego, esito)
-            } else esito(stato, corpo)
+                azione(f, c.ripiego, esito = esito)
+            } else if (stato == 403 && c.csrf && !tentativoRicarica) {
+                // v1.16.0 — possibile token CSRF invecchiato: pagina fresca e un solo ritentativo.
+                diagnostica.append("[${f.nome}] ${c.url} -> 403, ricarico la pagina e riprovo una volta\n")
+                pronte[f.nome] = false
+                w.loadUrl(f.origine)
+                azione(f, c, tentativoRicarica = true, esito = esito)
+            } else {
+                val corpoFinale = if (tentativoRicarica) "[ricaricato] $corpo" else corpo
+                esito(stato, corpoFinale)
+            }
         }
 
         val corpoJs = if (c.corpo == null) "undefined"
@@ -193,7 +245,11 @@ class MotoreRicerca(
             // v1.11.0 — le due intestazioni che mancavano, lette dal bundle vero del sito.
             opz.headers['Platform'] = 'web';
             opz.headers['X-Next-App'] = 'marketplace-web';
-            marca = 'csrf:' + (t ? t.length : 0) + ' anon:' + (an ? 1 : 0) + ' hdr:2';
+            // v1.16.0 — Vinted usa Datadome (anti-bot) sulle scritture: il cookie
+            // "datadome" c'e' o no, e' un indizio in piu' se il 403 torna anche
+            // dopo il ricaricamento (vedi commento su azione(), sopra).
+            var dd = /(?:^|;\s*)datadome=([^;]+)/.exec(document.cookie);
+            marca = 'csrf:' + (t ? t.length : 0) + ' anon:' + (an ? 1 : 0) + ' hdr:2' + ' dd:' + (dd ? 1 : 0);
           } catch (e) { marca = 'csrf:errore'; }
         """
 

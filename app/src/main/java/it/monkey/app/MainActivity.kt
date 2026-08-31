@@ -103,6 +103,13 @@ class MainActivity : ComponentActivity() {
     private var avanzamento: Int? = null
     /** v0.7.0 — titolo della pagina aperta, per la barra. */
     private var titoloPagina: String = ""
+    /*
+     * v1.15.0 (2026-08-31) — il banner che guida al login, solo al primo
+     * avvio. Diventa false (e resta cosi' per sempre, e' salvato) appena
+     * l'utente lo chiude o tocca davvero "Sito" nel menu: in entrambi i casi
+     * ha visto il percorso, non serve piu' indicarglielo.
+     */
+    private var mostraGuidaLogin by mutableStateOf(false)
 
     private val HOME = arrayOf("https://www.subito.it/", "https://www.vinted.it/")
 
@@ -118,7 +125,8 @@ class MainActivity : ComponentActivity() {
             modoRicerca = true, bloccoAttivo = true, vistaCompatta = false,
             modoSonda = false, fonteVinted = false, scriptPagina = true,
             nascosti = 0, ricerche = 0, nuovi = 0,
-            titoloPagina = "", riga = "", avanzamento = null
+            titoloPagina = "", riga = "", avanzamento = null,
+            mostraGuida = false   // corretto dal primo aggiornaStato(), a prefs letti
         )
     )
 
@@ -172,6 +180,8 @@ class MainActivity : ComponentActivity() {
         vistaCompatta = prefs.getBoolean("vistaCompatta", true)
         modoSonda = prefs.getBoolean("modoSonda", false)
         scriptPagina = prefs.getBoolean("scriptPagina", true)
+        // v1.15.0 — assente in prefs = non ancora vista = primo avvio davvero.
+        mostraGuidaLogin = !prefs.getBoolean("guidaLoginVista", false)
         nomePonte = nomeCasuale("nomePonte", "_")
         pref = nomeCasuale("prefisso", "")
 
@@ -394,7 +404,9 @@ class MainActivity : ComponentActivity() {
             azzeraCronologia = true
             sullaPaginaAperta = true              // v1.5.0
             web.loadUrl(HOME[fonte])
-            aggiornaStato()
+            // v1.15.0 — e' proprio il percorso che la guida indicava: se era
+            // ancora visibile, l'utente l'ha appena seguita fino in fondo.
+            if (mostraGuidaLogin) chiudiGuidaLogin() else aggiornaStato()
         },
         apriNascosti = { mostraNascosti() },
         apriPreferiti = {                       // v1.9.0
@@ -438,8 +450,16 @@ class MainActivity : ComponentActivity() {
                  */
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
             } catch (t: Throwable) { toast("Nessun browser disponibile") }
-        }
+        },
+        chiudiGuida = { chiudiGuidaLogin() }      // v1.15.0
     )
+
+    /** v1.15.0 — chiude il banner di guida al login e non lo mostra mai piu'. */
+    private fun chiudiGuidaLogin() {
+        mostraGuidaLogin = false
+        prefs.edit().putBoolean("guidaLoginVista", true).apply()
+        aggiornaStato()
+    }
 
     private fun nomeCasuale(chiave: String, prefisso: String): String {
         prefs.getString(chiave, null)?.let { return it }
@@ -865,7 +885,8 @@ class MainActivity : ComponentActivity() {
             nuovi = RicercheSalvate.nuoviTotali(),
             titoloPagina = titoloPagina,
             riga = riga,
-            avanzamento = avanzamento
+            avanzamento = avanzamento,
+            mostraGuida = mostraGuidaLogin   // v1.15.0
         )
     }
 
