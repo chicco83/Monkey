@@ -32,7 +32,9 @@ data class Annuncio(
      *  - urn: identificatore lungo di Subito ("id:ad:<uuid>:list:<numero>"),
      *    che e' la forma richiesta dal suo servizio preferiti. Il numero da
      *    solo non basta.
-     *  - venditore: id del venditore su Vinted, unica via per il luogo.
+     *  - venditore: id del venditore. Su Vinted e' l'unica via per il luogo
+     *    (LuoghiVinted). Su Subito, dalla v1.30.0, e' "advertiser.user_id"
+     *    dei risultati di ricerca, e serve alle recensioni (RecensioniSubito).
      *  - preferitoIniziale: Vinted lo dichiara gia' nei risultati; Subito no,
      *    e li' lo stato arriva da una chiamata a parte.
      */
@@ -46,12 +48,37 @@ data class Annuncio(
      *  - descrizione: il testo dell'annuncio, che su Subito arriva gia' con i
      *    risultati (campo "body") e riempie lo spazio vuoto accanto ai dati.
      *    Vinted nel catalogo non lo espone: li' resta vuoto e la colonna sparisce.
+     *    (Non e' un bug da correggere qui: e' l'elenco di ricerca Vinted che
+     *    non porta il testo, vedi FonteVinted.leggi in Fonti.kt.)
+     *
+     *  - immagini (v1.32.0): TUTTE le foto dell'annuncio, non solo la prima,
+     *    per farle scorrere nella vista estesa (SchermataRicerca.RigaAnnuncio).
+     *    Su Subito viene dallo stesso array "images" gia' letto per la prima
+     *    foto (FonteSubito.leggi la leggeva solo in posizione 0); su Vinted
+     *    dal campo "photos" (plurale, distinto da "photo" singolare gia' in
+     *    uso) — visto SOLO come nome di campo nell'elenco chiavi di una
+     *    diagnostica esportata, non ancora in una sonda con il contenuto
+     *    vero: si presume la stessa forma dell'oggetto "photo" singolare
+     *    (stesso "url"), perche' e' la stessa API. Se restasse vuoto o
+     *    sbagliato per Vinted, la vista estesa ripiega da sola su una sola
+     *    foto (vedi sotto) — nessun rischio, solo da confermare con una
+     *    sonda vera il giorno che si vuole essere certi anche li'.
      */
     val immagineGrande: String? = null,
+    val immagini: List<String> = emptyList(),
     val descrizione: String = "",
     val urn: String = "",
     val venditore: String = "",
-    val preferitoIniziale: Boolean = false
+    val preferitoIniziale: Boolean = false,
+    /*
+     * v1.58.0 (2026-09-24) — vero quando dataMillis NON e' una data
+     * dichiarata dalla fonte ma una stima (oggi: solo gli annunci Vinted letti
+     * dalla pagina del catalogo, vedi StimaDataVinted.kt). La riga in elenco
+     * la mostra con "≈" davanti, per non spacciare una stima per un fatto.
+     * Ultimo parametro e con valore di default: nessuna chiamata esistente
+     * cambia.
+     */
+    val dataStimata: Boolean = false
 ) {
     /** Chiave usata nell'archivio degli scartati. Gli annunci Subito restano
      *  con l'ID nudo per compatibilita' con quanto gia' nascosto dalla v0.3.0. */

@@ -15,9 +15,68 @@ package it.monkey.app
 import org.json.JSONArray
 import org.json.JSONObject
 
+/*
+ * v1.41.0 (2026-09-08) — annunci per pagina, raddoppiati da 30 a 60.
+ *
+ * Meno pagine per coprire la stessa ricerca vuol dire anche meno occasioni
+ * di rimescolamento fra Subito e Vinted (vedi il commento su "confineFonte"
+ * in StatoRicerca.kt): ogni pagina in piu' e' un punto in cui le due fonti
+ * possono essersi allontanate nel tempo l'una dall'altra, quindi dimezzare
+ * il numero di pagine dimezza anche quante volte quel disallineamento puo'
+ * capitare. Da confermare sul campo che entrambe le API accettino un
+ * valore diverso da 30 senza limitarlo per conto loro (nessuna sonda l'ha
+ * mai verificato: finora si e' sempre chiesto lo stesso numero che il sito
+ * vero chiede).
+ *
+ * --- versione precedente (fino alla v1.40.0, valore 30 scritto a mano
+ *     in FonteSubito.url() — "lim=30" — e in FonteVinted.url() —
+ *     "per_page=30") ---
+ * (nessuna costante: ogni fonte aveva il proprio "30" scritto direttamente
+ *  nell'URL)
+ * --- fine versione precedente ---
+ */
+/*
+ * v1.44.0 (2026-09-08) — CORREZIONE: il "da confermare sul campo" della
+ * v1.41.0 e' stato confermato, e ha risposto NO per Vinted. Diagnostica
+ * mandata dall'utente ("errore 500 da vinted"):
+ *
+ *   [subito] .../search/items?...&lim=60&start=0 -> 60 annunci (ok)
+ *   [vinted] /api/v2/catalog/items?...&per_page=60&page=1 ->
+ *            stato 500 — {"code":105,"message":"Errore del server",
+ *                          "message_code":"server_error"}
+ *
+ * Stessa ricerca, stesso momento: Subito accetta 60 senza problemi, Vinted
+ * no — non un rifiuto pulito (400/422), un 500 vero e proprio, segno che il
+ * valore manda in errore qualcosa lato server invece di essere solo
+ * ignorato o troncato. La costante quindi si sdoppia: ANNUNCI_PER_PAGINA
+ * resta 60 per Subito (confermato buono dalla stessa diagnostica),
+ * ANNUNCI_PER_PAGINA_VINTED torna al 30 di sempre (mai fallito, in nessuna
+ * versione fino alla 1.40.0) finche' una sonda non dice qual e' il vero
+ * tetto di Vinted (se uno ce n'e', magari un valore fisso come 20 o 24, non
+ * necessariamente "raddoppiare non si puo' per niente"). Il raddoppio delle
+ * pagine dell'annuncio precedente resta com'era solo per Subito.
+ */
+const val ANNUNCI_PER_PAGINA = 60
+const val ANNUNCI_PER_PAGINA_VINTED = 30
+
 interface Fonte {
     val nome: String
     val origine: String                 // pagina da cui deve partire la chiamata
+
+    /*
+     * v1.56.0 (2026-09-16) — true quando questa fonte non risponde piu' con
+     * JSON da un endpoint di rete per l'elenco di ricerca: vedi il grande
+     * commento in cima a FonteVinted.url() per la storia completa (era
+     * "/api/v2/catalog/items", ritirato, sostituito da qui in avanti dalla
+     * lettura della pagina vera). Quando e' vero, MotoreRicerca.avvia() non
+     * fa una fetch: naviga la pagina intera in una sessione DEDICATA (mai
+     * condivisa con quella di azione(), apposta per non ripetere la
+     * regressione della v1.50.0/v1.51.0 — sessione condivisa e navigazioni
+     * concorrenti) e leggi() interpreta il DOM invece di una risposta HTTP.
+     * Solo Vinted, per ora: Subito continua esattamente come prima.
+     */
+    val usaPaginaDom: Boolean get() = false
+
     fun url(q: String, pagina: Int, ordine: String): String
     fun leggi(json: String): List<Annuncio>
     fun chiavi(json: String): String    // diagnostica: com'e' fatto il primo elemento
@@ -61,13 +120,17 @@ interface Fonte {
  *                Serve dove il contratto e' stato osservato una volta sola e
  *                non si sa se l'indirizzo giusto sia quello relativo al sito o
  *                quello diretto: si prova, non si indovina.
+ * @param paginaPrima v1.26.0 — se non nulla, la sessione ci naviga PRIMA di
+ *                fare la chiamata (e aspetta che finisca di caricare). Nata
+ *                per i preferiti Vinted: vedi il commento su MotoreRicerca.azione().
  */
 data class Chiamata(
     val metodo: String,
     val url: String,
     val corpo: String? = null,
     val csrf: Boolean = false,
-    val ripiego: Chiamata? = null
+    val ripiego: Chiamata? = null,
+    val paginaPrima: String? = null
 )
 
 /* --------------------------------------------------------------------- */
@@ -82,15 +145,32 @@ object FonteSubito : Fonte {
      * Risposta: { count_all, lines, start, filters, checknew, ads:[...] }
      * t=s -> annunci in vendita. sort=datedesc -> dal piu' recente.
      */
+    /*
+     * v1.41.0 — "lim=30" fisso e "start" calcolato su 30 diventano
+     * ANNUNCI_PER_PAGINA (60): vedi il commento sulla costante, in cima al
+     * file, per il perche'.
+     *
+     * --- versione precedente (fino alla v1.40.0) ---
+     * override fun url(q: String, pagina: Int, ordine: String): String {
+     *     val start = (pagina - 1) * 30
+     *     val sort = when (ordine) {
+     *         "prezzo_cresc" -> "priceasc"
+     *         "prezzo_decr" -> "pricedesc"
+     *         else -> "datedesc"
+     *     }
+     *     return "https://hades.subito.it/v1/search/items" +
+     *             "?q=" + enc(q) + "&t=s&lim=30&start=$start&sort=$sort"
+     * --- fine versione precedente ---
+     */
     override fun url(q: String, pagina: Int, ordine: String): String {
-        val start = (pagina - 1) * 30
+        val start = (pagina - 1) * ANNUNCI_PER_PAGINA
         val sort = when (ordine) {
             "prezzo_cresc" -> "priceasc"
             "prezzo_decr" -> "pricedesc"
             else -> "datedesc"
         }
         return "https://hades.subito.it/v1/search/items" +
-                "?q=" + enc(q) + "&t=s&lim=30&start=$start&sort=$sort"
+                "?q=" + enc(q) + "&t=s&lim=$ANNUNCI_PER_PAGINA&start=$start&sort=$sort"
     }
 
     override fun leggi(json: String): List<Annuncio> {
@@ -123,7 +203,8 @@ object FonteSubito : Fonte {
              * val img = a.optJSONArray("images")?.optJSONObject(0)?.optString("cdn_base_url")
              * --- fine versione precedente ---
              */
-            val imgBase = a.optJSONArray("images")?.optJSONObject(0)?.optString("cdn_base_url")
+            val immaginiArr = a.optJSONArray("images")
+            val imgBase = immaginiArr?.optJSONObject(0)?.optString("cdn_base_url")
             val img = if (imgBase.isNullOrBlank()) null
                       else if (imgBase.contains("?")) imgBase
                       else "$imgBase?rule=large-fixed-card-3x-auto"
@@ -137,6 +218,21 @@ object FonteSubito : Fonte {
              */
             val imgGrande = if (imgBase.isNullOrBlank() || imgBase.contains("?")) img
                             else "$imgBase?rule=gallery-mobile-3x-auto"
+            /*
+             * v1.32.0 — TUTTE le foto, non solo la prima: stesso array
+             * "images", stessa resa "gallery-mobile-3x-auto" gia' verificata
+             * sopra per la posizione 0, solo applicata a ogni elemento invece
+             * che al solo primo. Serve alla vista estesa per farle scorrere
+             * (SchermataRicerca.RigaAnnuncio).
+             */
+            val immagini = if (immaginiArr != null) (0 until immaginiArr.length()).mapNotNull { k ->
+                val base = immaginiArr.optJSONObject(k)?.optString("cdn_base_url")
+                when {
+                    base.isNullOrBlank() -> null
+                    base.contains("?") -> base
+                    else -> "$base?rule=gallery-mobile-3x-auto"
+                }
+            } else emptyList()
 
             Annuncio(
                 fonte = nome,
@@ -150,9 +246,20 @@ object FonteSubito : Fonte {
                 dataMillis = iso(a.optJSONObject("dates")?.optString("display_iso8601")),
                 immagine = img,
                 immagineGrande = imgGrande,               // v1.7.0
+                immagini = immagini,                       // v1.32.0
                 descrizione = a.optString("body").trim(), // v1.7.0
                 url = indirizzo(a, id),
-                urn = a.optString("urn")          // v1.2.0: serve ai preferiti
+                urn = a.optString("urn"),         // v1.2.0: serve ai preferiti
+                /*
+                 * v1.30.0 (2026-09-01) — NUOVO: fino a qui "venditore" restava
+                 * vuoto per Subito (il campo esiste in Annuncio dalla v1.2.0
+                 * ma solo Vinted lo riempiva, per il luogo). "advertiser.user_id"
+                 * c'e' gia' in ogni risultato di ricerca — verificato sul campo,
+                 * es. "advertiser":{"user_id":"144352772",...} — e ora serve
+                 * alle recensioni del venditore (RecensioniSubito.kt), stesso
+                 * ruolo che "venditore" gia' aveva per Vinted.
+                 */
+                venditore = a.optJSONObject("advertiser")?.optString("user_id").orEmpty()
             ).let { out.add(it) }
         }
         return out
@@ -356,23 +463,434 @@ object FonteVinted : Fonte {
     override val origine = "https://www.vinted.it/"
 
     /*
-     * La sonda ha visto la pagina catalogo chiamare, in relativo:
-     *   /api/v2/promoted_closets?...&search_text=rtx+16gb&order=newest_first
-     * La stessa famiglia serve gli articoli: /api/v2/catalog/items.
-     * Chiamata in relativo dalla pagina vinted.it: stessa origine, stessi cookie.
+     * v1.56.0 (2026-09-16) — "/api/v2/catalog/items" (sotto, come storia) e'
+     * andato per sempre: quattro sonde di fila (v1.52.0 -> v1.55.0) lo hanno
+     * confermato passo per passo.
+     *
+     *   v1.52.0: l'errore era un vero 404 di rotta sparita, non un guasto
+     *            temporaneo — la pagina di ricerca vera non fa PIU' nessuna
+     *            chiamata fetch/XHR che porti l'elenco.
+     *   v1.53.0: niente JSON nascosto in nessuno script ne' nel buffer di
+     *            streaming di Next.js (window.__next_f) — la pista JSON e'
+     *            chiusa per davvero, non solo "non ancora trovata".
+     *   v1.54.0: la pagina contiene pero' link HTML veri a ogni annuncio
+     *            ("/items/<id>") — l'elenco e' HTML gia' pronto, va letto
+     *            dal DOM, non da una risposta.
+     *   v1.55.0: trovato il contenitore esatto di ogni card —
+     *            "[data-testid='product-item-id-<id>']" (senza "--" dopo
+     *            l'id, quelli sono i pezzi interni) — e il formato, sempre
+     *            uguale su 10 annunci diversi controllati, dell'attributo
+     *            "alt" della sua immagine:
+     *
+     *              "<titolo>, Brand: <marca>, Condizioni: <condizione>,
+     *               <prezzo> €, <prezzo totale> €"
+     *
+     *            (il secondo prezzo include la Protezione acquisti, si
+     *            legge nell'HTML vero: aria-label="…€ include la
+     *            Protezione acquisti" — non e' uno sconto/prezzo barrato).
+     *
+     * Da questa versione url() NON e' piu' un percorso relativo per una
+     * fetch dentro la sessione di sempre (quella di MotoreRicerca.azione(),
+     * ancora usata per preferiti e traduzione): e' l'indirizzo INTERO della
+     * pagina di ricerca vera di vinted.it, che MotoreRicerca.avviaDom()
+     * naviga per davvero in una sessione SEPARATA e dedicata (vedi il
+     * commento su "usaPaginaDom" nell'interfaccia Fonte, e quello su
+     * avviaDom() in MotoreRicerca.kt per il perche' una sessione a parte:
+     * non e' un capriccio, e' la lezione della regressione v1.50.0/v1.51.0).
+     * leggi() smista da solo fra questo nuovo formato e quello vecchio
+     * (ancora vivo per l'elenco preferiti, che e' un endpoint diverso e
+     * MAI stato toccato da questo ritiro) guardando se il testo comincia
+     * con "[" (il nostro elenco) o con "{" (la vecchia risposta JSON).
+     *
+     * "search_id" (visto nell'indirizzo che Vinted stesso genera navigando
+     * col browser) non compare qui: e' un identificatore di telemetria che
+     * l'interfaccia di Vinted si assegna da sola, non un filtro — la sonda
+     * l'ha sempre visto in QUALUNQUE ricerca, con un valore diverso ogni
+     * volta, mai lo stesso a parita' di ricerca: non e' cio' che determina
+     * i risultati. "page=$pagina" resta, come nella vecchia rotta, ma NON
+     * e' stato ancora verificato che la pagina 2 in avanti porti annunci
+     * diversi dalla 1 invece di ripetere la stessa — vedi il commento su
+     * avviaDom() per cosa succede in quel caso (nulla di rotto: gli
+     * annunci gia' visti vengono scartati come doppioni e la fonte viene
+     * segnata esaurita, lo stesso comportamento sicuro gia' in
+     * StatoRicerca per ogni fonte che smette di portare novita').
+     *
+     * --- versione precedente (v1.44.0 -> v1.55.0, "/api/v2/catalog/items",
+     *     endpoint ritirato da Vinted — la storia sopra) ---
+     * override fun url(q: String, pagina: Int, ordine: String): String {
+     *     val order = when (ordine) {
+     *         "prezzo_cresc" -> "price_low_to_high"
+     *         "prezzo_decr" -> "price_high_to_low"
+     *         else -> "newest_first"
+     *     }
+     *     return "/api/v2/catalog/items?search_text=" + enc(q) +
+     *             "&per_page=$ANNUNCI_PER_PAGINA_VINTED&page=$pagina&order=$order"
+     * }
+     * --- fine versione precedente ---
      */
+    override val usaPaginaDom = true
+
     override fun url(q: String, pagina: Int, ordine: String): String {
         val order = when (ordine) {
             "prezzo_cresc" -> "price_low_to_high"
             "prezzo_decr" -> "price_high_to_low"
             else -> "newest_first"
         }
-        return "/api/v2/catalog/items?search_text=" + enc(q) +
-                "&per_page=30&page=$pagina&order=$order"
+        return "https://www.vinted.it/catalog?search_text=" + enc(q) +
+                "&order=$order&page=$pagina"
     }
 
+    /*
+     * v1.58.0 (2026-09-24) — LETTORE DELL'"alt" RISCRITTO, non piu' a
+     * modelli fissi.
+     *
+     * Segnalazione dell'utente con screenshot: "molti annunci Vinted non
+     * mostrano il prezzo nell'anteprima" (ricerca "galaxy watch 4 lte": tutte
+     * le card con "—" al posto del prezzo e l'intero "alt" come titolo, cioe'
+     * il lettore non aveva riconosciuto il formato). Nello screenshot si
+     * legge la prova: "Samsung Galaxy watch 4 LTE 44mm, Condizioni: Buone,
+     * Ta…" — dopo la condizione c'e' un pezzo "Taglia: …" che nessuno dei due
+     * modelli v1.57.0 prevedeva (orologi e abbigliamento hanno la taglia, le
+     * CPU della sonda v1.55.0 no: per questo i dieci esempi di allora erano
+     * tutti uguali). Aggiungere un terzo e un quarto modello avrebbe solo
+     * rimandato il prossimo caso; si legge invece la STRUTTURA, che e' stabile
+     * in tutti gli esempi visti finora:
+     *
+     *   <titolo>, <Etichetta>: <valore>, <Etichetta>: <valore>, ...,
+     *   <prezzo> €, <prezzo con protezione> €
+     *
+     * 1. si staccano dalla coda i pezzi "numero + €" (il PRIMO dei due e' il
+     *    prezzo dell'articolo, il secondo include la Protezione acquisti —
+     *    confermato in v1.56.0 dall'aria-label della card);
+     * 2. il primo pezzo "Parola: valore" (dopo il primo) segna la fine del
+     *    titolo — il titolo puo' contenere virgole, resta tutto insieme;
+     * 3. da li' in poi ogni "Etichetta: valore" e' un campo; un pezzo senza
+     *    etichetta e' la continuazione del valore precedente (un valore con
+     *    una virgola dentro, es. una marca "A, B").
+     * Le etichette note si usano per nome (Brand/Marca, Condizioni/Stato,
+     * Taglia); quelle mai viste finiscono comunque nel dettaglio come
+     * "Etichetta valore", e la diagnostica le elenca tutte (chiaviDom()).
+     *
+     * Il numero del prezzo accetta sia "50.00" (visto) sia "1.234,50" o
+     * "1,234.50" (mai visti, ma e' il primo posto dove si romperebbe se
+     * Vinted cambiasse formato per i prezzi sopra 999), e gli spazi "non
+     * separabili" ( ,  ) che la regex v1.57.0 con "\s" non
+     * avrebbe riconosciuto.
+     *
+     * --- versione precedente (v1.57.0, due modelli fissi) ---
+     * private val RE_ALT_CON_MARCA = Regex(
+     *     "^(.*), Brand: ([^,]*), Condizioni: ([^,]*), " +
+     *             "([0-9]+(?:\\.[0-9]+)?)\\s?€, ([0-9]+(?:\\.[0-9]+)?)\\s?€$"
+     * )
+     * private val RE_ALT_SENZA_MARCA = Regex(
+     *     "^(.*), Condizioni: ([^,]*), " +
+     *             "([0-9]+(?:\\.[0-9]+)?)\\s?€, ([0-9]+(?:\\.[0-9]+)?)\\s?€$"
+     * )
+     * private data class CampiAlt(val titolo: String, val marca: String, val condizione: String, val prezzo: Double?)
+     * private fun scomponiAlt(alt: String): CampiAlt {
+     *     val a = alt.trim()
+     *     RE_ALT_CON_MARCA.matchEntire(a)?.let { m ->
+     *         val (titolo, marca, condizione, prezzoTxt, _) = m.destructured
+     *         return CampiAlt(titolo.trim(), marca.trim(), condizione.trim(), prezzoTxt.toDoubleOrNull())
+     *     }
+     *     RE_ALT_SENZA_MARCA.matchEntire(a)?.let { m ->
+     *         val (titolo, condizione, prezzoTxt, _) = m.destructured
+     *         return CampiAlt(titolo.trim(), "", condizione.trim(), prezzoTxt.toDoubleOrNull())
+     *     }
+     *     return CampiAlt(a, "", "", null)
+     * }
+     * --- fine versione precedente ---
+     *
+     * --- versione ancora precedente (v1.56.0, un solo modello, "Brand: "
+     *     sempre obbligatorio) ---
+     * private val RE_ALT = Regex(
+     *     "^(.*), Brand: ([^,]*), Condizioni: ([^,]*), " +
+     *             "([0-9]+(?:\\.[0-9]+)?)\\s?€, ([0-9]+(?:\\.[0-9]+)?)\\s?€$"
+     * )
+     * --- fine versione precedente ---
+     */
+    private const val SPAZI = "\\s\\u00a0\\u202f"
+
+    /** Un pezzo fatto solo di prezzo: "50.00 €", "€ 50", "1.234,50 €". */
+    private val RE_PEZZO_PREZZO = Regex("^€?[$SPAZI]*[0-9][0-9.,$SPAZI]*[$SPAZI]*€?$")
+
+    /** Un pezzo "Etichetta: valore" (etichetta di sole lettere/spazi, corta). */
+    private val RE_ETICHETTA = Regex("^([\\p{L}][\\p{L} ]{0,24}):[$SPAZI]+(.*)$")
+
+    private val ETICHETTE_MARCA = setOf("brand", "marca")
+    private val ETICHETTE_CONDIZIONE = setOf("condizioni", "condizione", "stato")
+    private val ETICHETTE_TAGLIA = setOf("taglia", "misura")
+
+    private data class CampiAlt(
+        val titolo: String,
+        val marca: String,
+        val condizione: String,
+        val taglia: String,
+        /** etichette non riconosciute, gia' pronte come "Etichetta valore" */
+        val altri: List<String>,
+        val prezzo: Double?,
+        /** tutte le etichette trovate, per la diagnostica */
+        val etichette: List<String>
+    )
+
+    /** "50.00" -> 50.0, "1.234,50" -> 1234.5, "1,234.50" -> 1234.5, "1.234" -> 1234.0 */
+    private fun numeroPrezzo(testo: String): Double? {
+        val t = testo.replace(Regex("[^0-9.,]"), "")
+        if (t.isEmpty()) return null
+        val sep = maxOf(t.lastIndexOf('.'), t.lastIndexOf(','))
+        val decimali = if (sep >= 0) t.length - sep - 1 else 0
+        return if (sep >= 0 && decimali in 1..2) {
+            (t.substring(0, sep).replace(Regex("[.,]"), "") + "." + t.substring(sep + 1)).toDoubleOrNull()
+        } else {
+            t.replace(Regex("[.,]"), "").toDoubleOrNull()
+        }
+    }
+
+    /**
+     * v1.58.0 — vedi il commento sopra. Un "alt" di cui non si riconosce
+     * nulla resta tutto come titolo, senza prezzo (come prima): non si scarta
+     * mai un annuncio per un formato inatteso — lo conta la diagnostica.
+     */
+    private fun scomponiAlt(alt: String): CampiAlt {
+        val a = alt.trim()
+        val pezzi = a.split(", ").toMutableList()
+
+        // 1) prezzi in coda (al massimo due, e sempre almeno un pezzo di titolo)
+        val prezzi = ArrayList<String>()
+        while (pezzi.size > 1 && prezzi.size < 2) {
+            val p = pezzi.last().trim()
+            if (p.contains('€') && RE_PEZZO_PREZZO.matches(p)) {
+                prezzi.add(0, p); pezzi.removeAt(pezzi.lastIndex)
+            } else break
+        }
+        val prezzo = prezzi.firstOrNull()?.let { numeroPrezzo(it) }
+
+        // 2) fine del titolo = primo pezzo etichettato dopo il primo
+        val inizioCampi = (1 until pezzi.size).firstOrNull { RE_ETICHETTA.matches(pezzi[it].trim()) } ?: pezzi.size
+        val titolo = pezzi.subList(0, inizioCampi).joinToString(", ").trim()
+
+        // 3) campi etichettati; un pezzo senza etichetta continua il valore precedente
+        val campi = LinkedHashMap<String, String>()
+        var ultima: String? = null
+        for (j in inizioCampi until pezzi.size) {
+            val pezzo = pezzi[j].trim()
+            val m = RE_ETICHETTA.matchEntire(pezzo)
+            if (m != null) {
+                ultima = m.groupValues[1].trim()
+                campi[ultima] = m.groupValues[2].trim()
+            } else if (ultima != null) {
+                campi[ultima] = campi[ultima] + ", " + pezzo
+            }
+        }
+
+        var marca = ""; var condizione = ""; var taglia = ""
+        val altri = ArrayList<String>()
+        for ((etichetta, valore) in campi) {
+            when (etichetta.lowercase()) {
+                in ETICHETTE_MARCA -> marca = valore
+                in ETICHETTE_CONDIZIONE -> condizione = valore
+                in ETICHETTE_TAGLIA -> taglia = valore
+                else -> if (valore.isNotBlank()) altri.add("$etichetta $valore")
+            }
+        }
+        return CampiAlt(titolo.ifBlank { a }, marca, condizione, taglia, altri, prezzo, campi.keys.toList())
+    }
+
+    /** v1.58.0 — la riga "dettaglio": marca · condizione · taglia · altro. */
+    private fun dettaglioDa(c: CampiAlt): String =
+        (listOf(c.marca, c.condizione, c.taglia.takeIf { it.isNotBlank() }?.let { "Taglia $it" }.orEmpty()) + c.altri)
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+
+    /**
+     * v1.56.0 — l'elenco letto dalla pagina vera (MotoreRicerca.avviaDom()),
+     * non da una risposta dell'API: "annunci" qui e' l'array che la nostra
+     * stessa estrazione JS ha costruito dal DOM, un oggetto per annuncio
+     * con id/href/alt/src/pref — vedi il commento su avviaDom().
+     *
+     * Due campi restano vuoti rispetto a prima, onestamente non disponibili
+     * nella scheda dell'elenco (si vedevano solo nella vecchia risposta
+     * JSON, ora sparita):
+     *  - venditore: nessun id venditore nella card — LuoghiVinted (il
+     *    luogo, gia' "" da sempre qui, vedi sotto) semplicemente non ha
+     *    nulla da risolvere, si comporta come quando venditore era gia'
+     *    vuoto per altri motivi.
+     *  - venduto: nessun indizio "venduto" visto finora in una card (i
+     *    dieci esempi controllati erano tutti in vendita) — resta "false"
+     *    finche' una diagnostica non mostra come si presenta un annuncio
+     *    venduto in elenco, invece di indovinare un testo o una classe CSS
+     *    mai vista.
+     *
+     * v1.57.0 (2026-09-16) — la stima ordinale diventa continua fra le
+     * pagine (VOCI_STIMATE_PER_PAGINA): prima ripartiva da "ora" a ogni
+     * pagina e gli annunci Vinted sparivano scorrendo indietro nei giorni.
+     *
+     * v1.58.0 (2026-09-24) — CORREZIONE: "anche se caricati ieri o giorni fa
+     * vengono sempre mostrati come caricati oggi". Vero, e dichiarato come
+     * limite gia' nella v1.57.0: la stima ordinale partiva sempre da "adesso"
+     * e scendeva di un secondo per annuncio — 96 annunci = un minuto e mezzo,
+     * quindi tutto "oggi". Ora la data si stima dall'ID dell'articolo (i
+     * numeri Vinted crescono nel tempo, vedi StimaDataVinted.kt per le prove
+     * e il metodo), con "ancore" vere prese dalla pagina dei piu' recenti.
+     * Se l'id non e' un numero (mai visto, ma non si scarta l'annuncio), si
+     * ripiega sulla stima ordinale della v1.57.0. dataStimata=true fa
+     * comparire "≈" davanti alla data in elenco.
+     * Nello stesso punto: dettaglio con taglia e campi extra (dettaglioDa()).
+     *
+     * --- versione precedente (v1.57.0) ---
+     * private fun leggiDaPaginaDom(root: JSONObject): List<Annuncio> {
+     *     val pagina = root.optInt("pagina", 1).coerceAtLeast(1)
+     *     val arr = root.optJSONArray("annunci") ?: return emptyList()
+     *     val out = ArrayList<Annuncio>(arr.length())
+     *     val ora = System.currentTimeMillis()
+     *     val offsetPagina = (pagina - 1).toLong() * VOCI_STIMATE_PER_PAGINA
+     *     for (i in 0 until arr.length()) {
+     *         ...
+     *         dettaglio = listOf(campi.marca, campi.condizione).filter { it.isNotBlank() }.joinToString(" · "),
+     *         dataMillis = ora - (offsetPagina + i) * 1000L,
+     *         ...
+     *     }
+     *     return out
+     * }
+     * --- fine versione precedente ---
+     *
+     * --- versione ancora precedente (v1.56.0) ---
+     * private fun leggiDaPaginaDom(json: String): List<Annuncio> {
+     *     val arr = try { JSONArray(json) } catch (t: Throwable) { return emptyList() }
+     *     ...
+     *         dataMillis = ora - (i * 1000L),
+     *     ...
+     * }
+     * --- fine versione precedente ---
+     */
+    private const val VOCI_STIMATE_PER_PAGINA = 200
+
+    /** v1.58.0 — prima di leggere gli annunci si registra l'eventuale ancora arrivata con la pagina. */
+    private fun registraAncora(root: JSONObject) {
+        val anc = root.optJSONObject("ancora")
+        if (anc != null) {
+            val id = anc.optString("id").toLongOrNull() ?: 0L
+            val ms = anc.optLong("ms", 0L)
+            StimaDataVinted.registra(id, ms)
+        } else root.optString("ancoraErr").takeIf { it.isNotBlank() }?.let {
+            StimaDataVinted.segnaFallimento(it)
+        }
+    }
+
+    private fun leggiDaPaginaDom(root: JSONObject): List<Annuncio> {
+        registraAncora(root)                                        // v1.58.0
+        val pagina = root.optInt("pagina", 1).coerceAtLeast(1)
+        val arr = root.optJSONArray("annunci") ?: return emptyList()
+        val out = ArrayList<Annuncio>(arr.length())
+        val ora = System.currentTimeMillis()
+        val offsetPagina = (pagina - 1).toLong() * VOCI_STIMATE_PER_PAGINA
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val id = o.optString("id").takeIf { it.isNotBlank() } ?: continue
+            val campi = scomponiAlt(o.optString("alt"))
+            val src = o.optString("src").takeIf { it.startsWith("http") }
+            // v1.58.0 — data dall'id; ripiego sulla stima ordinale v1.57.0
+            val daId = id.toLongOrNull()?.let { StimaDataVinted.stima(it) } ?: 0L
+            val data = if (daId > 0L) daId else ora - (offsetPagina + i) * 1000L
+
+            out.add(
+                Annuncio(
+                    fonte = nome,
+                    id = id,
+                    titolo = campi.titolo,
+                    prezzo = campi.prezzo,
+                    prezzoTesto = campi.prezzo?.let { formatta(it, "EUR") } ?: "—",
+                    luogo = "",
+                    dettaglio = dettaglioDa(campi),                 // v1.58.0
+                    venduto = false,
+                    dataMillis = data,                              // v1.58.0
+                    immagine = src,
+                    immagineGrande = src,
+                    immagini = src?.let { listOf(it) } ?: emptyList(),
+                    url = assoluto(o.optString("href"), "https://www.vinted.it"),
+                    venditore = "",
+                    preferitoIniziale = o.optBoolean("pref", false),
+                    dataStimata = true                              // v1.58.0
+                )
+            )
+        }
+        return out
+    }
+
+    /*
+     * v1.56.0 — diagnostica gemella di chiavi(), per il nuovo formato DOM.
+     *
+     * v1.58.0 (2026-09-24) — conta i prezzi letti (non piu' "modello
+     * riconosciuto", concetto sparito col nuovo lettore), elenca TUTTE le
+     * etichette trovate con quante volte (e' cosi' che si scopre un campo
+     * nuovo, come "Taglia", senza aspettare uno screenshot), mostra un
+     * esempio di "alt" senza prezzo, e riporta lo stato della stima di data:
+     * ancora arrivata o motivo del fallimento, e le date stimate piu' nuova
+     * e piu' vecchia di questa pagina.
+     *
+     * --- versione precedente (v1.57.0) ---
+     * private fun chiaviDom(root: JSONObject): String {
+     *     val arr = root.optJSONArray("annunci") ?: return "(dom) \"annunci\" mancante"
+     *     var ok = 0; var falliti = 0; var esempioFallito = ""
+     *     for (i in 0 until arr.length()) {
+     *         val alt = arr.optJSONObject(i)?.optString("alt").orEmpty().trim()
+     *         if (RE_ALT_CON_MARCA.matches(alt) || RE_ALT_SENZA_MARCA.matches(alt)) ok++
+     *         else { falliti++; if (esempioFallito.isBlank()) esempioFallito = alt.take(200) }
+     *     }
+     *     return "(dom) pagina=${root.optInt("pagina", 1)} annunci=${arr.length()} " +
+     *             "alt-riconosciuti=$ok alt-non-riconosciuti=$falliti" +
+     *             if (esempioFallito.isNotBlank()) " · esempio: \"$esempioFallito\"" else ""
+     * }
+     * --- fine versione precedente ---
+     */
+    private fun chiaviDom(root: JSONObject): String {
+        val arr = root.optJSONArray("annunci") ?: return "(dom) \"annunci\" mancante"
+        var conPrezzo = 0; var senzaPrezzo = 0; var esempioSenza = ""
+        val etichette = LinkedHashMap<String, Int>()
+        var idMin = Long.MAX_VALUE; var idMax = Long.MIN_VALUE
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val alt = o.optString("alt").trim()
+            val c = scomponiAlt(alt)
+            if (c.prezzo != null) conPrezzo++
+            else { senzaPrezzo++; if (esempioSenza.isBlank()) esempioSenza = alt.take(200) }
+            c.etichette.forEach { etichette[it] = (etichette[it] ?: 0) + 1 }
+            o.optString("id").toLongOrNull()?.let { idMin = minOf(idMin, it); idMax = maxOf(idMax, it) }
+        }
+        val fmt = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.ITALY)
+        val date = if (idMax >= idMin)
+            " · date stimate ${fmt.format(java.util.Date(StimaDataVinted.stima(idMax)))}" +
+                    " → ${fmt.format(java.util.Date(StimaDataVinted.stima(idMin)))} (id $idMax → $idMin)"
+        else ""
+        val ancora = root.optJSONObject("ancora")?.let { " · ancora pagina: id=${it.optString("id")} card=${it.optInt("n")}" }
+            ?: root.optString("ancoraErr").takeIf { it.isNotBlank() }?.let { " · ancora pagina fallita: $it" }
+            ?: ""
+        return "(dom) pagina=${root.optInt("pagina", 1)} annunci=${arr.length()} " +
+                "prezzo-letto=$conPrezzo prezzo-mancante=$senzaPrezzo" +
+                " · etichette: " + etichette.entries.joinToString(", ") { "${it.key}=${it.value}" } +
+                (if (esempioSenza.isNotBlank()) " · esempio senza prezzo: \"$esempioSenza\"" else "") +
+                ancora + date +
+                "\n  " + StimaDataVinted.descrizione()
+    }
+
+    /*
+     * v1.57.0 — lo smistamento non guarda piu' se il testo comincia con "["
+     * o "{" (fragile: ora ENTRAMBI i formati sono oggetti, vedi sopra): si
+     * guarda direttamente se c'e' la chiave "annunci", che solo il nostro
+     * elenco DOM porta.
+     *
+     * --- versione precedente (v1.56.0) ---
+     * override fun leggi(json: String): List<Annuncio> {
+     *     if (json.trimStart().startsWith("[")) return leggiDaPaginaDom(json)
+     *     val root = JSONObject(json)
+     *     val items = root.optJSONArray("items") ?: return emptyList()
+     *     ...
+     * }
+     * --- fine versione precedente ---
+     */
     override fun leggi(json: String): List<Annuncio> {
         val root = JSONObject(json)
+        if (root.has("annunci")) return leggiDaPaginaDom(root)   // v1.57.0
         val items = root.optJSONArray("items") ?: return emptyList()
         val out = ArrayList<Annuncio>(items.length())
         for (i in 0 until items.length()) {
@@ -394,6 +912,22 @@ object FonteVinted : Fonte {
              */
             val foto = it0.optJSONObject("photo")
             val img = miniatura(foto) ?: foto?.optString("url")?.takeIf { it.startsWith("http") }
+            /*
+             * v1.32.0 — tutte le foto per la vista estesa (vedi il commento su
+             * Annuncio.immagini): il campo "photos" (plurale) e' visto nel
+             * solo elenco chiavi di una diagnostica esportata, non ancora in
+             * una sonda col contenuto vero — si presume la stessa forma di
+             * "photo" (singolare), gia' verificato qui sopra ("url" -> resa
+             * f800). Se l'array manca o i suoi elementi non hanno "url", il
+             * risultato e' semplicemente vuoto e la vista estesa ripiega da
+             * sola sulla sola foto singola: nessun rischio di crash o di dato
+             * sbagliato, solo — nel peggiore dei casi — niente scorrimento
+             * finche' una sonda vera non conferma la forma dell'array.
+             */
+            val fotoArr = it0.optJSONArray("photos")
+            val immaginiVinted = if (fotoArr != null) (0 until fotoArr.length()).mapNotNull { k ->
+                fotoArr.optJSONObject(k)?.optString("url")?.takeIf { u -> u.startsWith("http") }
+            } else emptyList()
 
             val url = assoluto(
                 it0.optString("url").ifBlank { "/items/$id" },
@@ -418,6 +952,7 @@ object FonteVinted : Fonte {
                     // v1.7.0 — photo.url e' la resa f800: giusta a tutta larghezza,
                     // sprecata in elenco (vedi v0.4.6). Ognuna al suo posto.
                     immagineGrande = foto?.optString("url")?.takeIf { it.startsWith("http") } ?: img,
+                    immagini = immaginiVinted,             // v1.32.0
                     url = url,
                     // v1.2.0
                     venditore = it0.optJSONObject("user")?.opt("id")?.toString().orEmpty(),
@@ -544,9 +1079,76 @@ object FonteVinted : Fonte {
         return t.optJSONObject(0)?.optString("url")?.takeIf { it.startsWith("http") }
     }
 
-    override fun chiavi(json: String): String =
-        (JSONObject(json).optJSONArray("items")?.optJSONObject(0)?.keys()
-            ?.asSequence()?.toList() ?: emptyList<String>()).joinToString(",")
+    /*
+     * v1.21.0 (2026-08-31) — DIAGNOSTICA per "su Vinted vedo solo gli annunci
+     * di oggi, quelli di ieri o prima compaiono solo su Subito".
+     *
+     * dataVinted() (sopra) ammette gia' da sola, nei suoi commenti, che i
+     * campi diretti (CAMPI_DATA) spesso mancano nel catalogo, e che la stima
+     * dall'indirizzo della foto "e' una stima, non una dichiarazione". Se
+     * quella stima fallisse proprio per gli annunci NON di oggi (per esempio
+     * perche' l'indirizzo della foto cambia forma dopo che Vinted la
+     * rielabora), ogni annuncio piu' vecchio di oggi prenderebbe dataMillis=0
+     * e l'ordinamento "piu' recenti" (StatoRicerca.risultati) lo spingerebbe
+     * in fondo alla lista — sembrerebbe sparito, mentre e' solo mal datato.
+     * E' un sospetto coerente con quanto gia' scritto nel codice, ma non
+     * ancora una prova.
+     *
+     * "chiavi()" e' gia' solo diagnostica (vedi l'interfaccia Fonte: "com'e'
+     * fatto il primo elemento") e finisce dritta nel log che la sonda esporta
+     * — zero rischio di toccare cosa si vede in lista. Qui si aggiunge, oltre
+     * ai campi del primo annuncio, quanti annunci DI QUESTA PAGINA hanno preso
+     * la data da un campo diretto, quanti dalla stima sulla foto, e quanti da
+     * nessuna delle due: la prossima sonda dira' se il sospetto regge.
+     *
+     * --- versione precedente (fino alla v1.20.0) ---
+     * override fun chiavi(json: String): String =
+     *     (JSONObject(json).optJSONArray("items")?.optJSONObject(0)?.keys()
+     *         ?.asSequence()?.toList() ?: emptyList<String>()).joinToString(",")
+     * --- fine versione precedente ---
+     */
+    /*
+     * v1.56.0 — smista come leggi(): il nostro elenco letto dal DOM
+     * (chiaviDom(), sopra) porta la chiave "annunci", la vecchia risposta
+     * JSON no (viva solo per l'elenco preferiti, endpoint mai toccato dal
+     * ritiro del catalogo — vedi il commento in cima a leggi()).
+     *
+     * v1.57.0 — lo smistamento non guarda piu' "[" contro "{" (ora
+     * ENTRAMBI i formati sono oggetti): si guarda la chiave "annunci",
+     * come in leggi().
+     *
+     * --- versione precedente (v1.56.0) ---
+     * override fun chiavi(json: String): String {
+     *     if (json.trimStart().startsWith("[")) return chiaviDom(json)
+     *     val items = JSONObject(json).optJSONArray("items")
+     *     ...
+     * }
+     * --- fine versione precedente ---
+     *
+     * --- versione precedente (fino alla v1.55.0, nessuno smistamento) ---
+     * (uguale al corpo dopo l'if, senza lo smistamento) ---
+     * --- fine versione precedente ---
+     */
+    override fun chiavi(json: String): String {
+        val root = JSONObject(json)
+        if (root.has("annunci")) return chiaviDom(root)   // v1.57.0
+
+        val items = root.optJSONArray("items")
+        val campi = (items?.optJSONObject(0)?.keys()?.asSequence()?.toList()
+            ?: emptyList<String>()).joinToString(",")
+
+        var daCampo = 0; var daFoto = 0; var senzaData = 0
+        if (items != null) for (i in 0 until items.length()) {
+            val it0 = items.optJSONObject(i) ?: continue
+            val foto = it0.optJSONObject("photo")
+            when {
+                CAMPI_DATA.any { chiave -> it0.opt(chiave) != null } -> daCampo++
+                RE_TS_FOTO.containsMatchIn(foto?.toString().orEmpty()) -> daFoto++
+                else -> senzaData++
+            }
+        }
+        return "$campi | data: campo=$daCampo foto=$daFoto mancante=$senzaData"
+    }
 
     /*
      * v1.2.0 — preferiti Vinted, contratto osservato con la sonda:
@@ -555,6 +1157,36 @@ object FonteVinted : Fonte {
      * Un solo endpoint per mettere e togliere: e' un interruttore, non due verbi.
      * Lo stato di partenza non richiede chiamate, sta gia' nei risultati
      * (is_favourite), quindi l'elenco serve solo come rete di sicurezza.
+     */
+    /*
+     * v1.26.0 (2026-09-01) — CORREZIONE, con la prova in mano: l'utente ha
+     * catturato con la sonda un'aggiunta e una rimozione di preferito fatte
+     * DENTRO una vera pagina di un articolo Vinted (quella su cui e' arrivato
+     * navigando dai risultati, con foto, venditore, tutto) — e li' funziona,
+     * identica per indirizzo e corpo a quella che l'app manda gia' (stesso
+     * "/api/v2/user_favourites/toggle", stesso {"type":"item","user_favourites":[…]}).
+     * Quindi non e' MAI stato un problema di indirizzo, corpo o intestazioni
+     * (v1.7.0, v1.11.0 le avevano gia' trovate giuste) — e' la PAGINA da cui
+     * parte la chiamata. La sessione nascosta dell'app (MotoreRicerca) carica
+     * la home di vinted.it UNA volta all'avvio e ci resta sopra per tutta la
+     * vita del processo: mai una vera navigazione, mai i tanti caricamenti
+     * (foto, venditore, pubblicita', contatori) che accompagnano l'apertura
+     * reale di un articolo e che verosimilmente contano per chi giudica se la
+     * sessione e' "umana". Ora "paginaPrima" dice alla sessione di caricare
+     * DAVVERO la pagina dell'annuncio (a.url, la stessa che si aprirebbe
+     * toccandolo) subito prima di provare il preferito — la stessa sequenza
+     * catturata funzionante. Vedi il commento su MotoreRicerca.azione().
+     *
+     * --- versione precedente (fino alla v1.25.0) ---
+     * private fun toggle(a: Annuncio) = Chiamata(
+     *     "POST", "/api/v2/user_favourites/toggle",
+     *     JSONObject()
+     *         .put("type", "item")
+     *         .put("user_favourites", JSONArray().put(a.id.toLongOrNull() ?: a.id))
+     *         .toString(),
+     *     csrf = true
+     * )
+     * --- fine versione precedente ---
      */
     /*
      * v1.6.0 (2026-08-31) — CORREZIONE: la POST tornava 403.
@@ -582,15 +1214,53 @@ object FonteVinted : Fonte {
             .put("type", "item")
             .put("user_favourites", JSONArray().put(a.id.toLongOrNull() ?: a.id))
             .toString(),
-        csrf = true
+        csrf = true,
+        paginaPrima = a.url.takeIf { it.isNotBlank() }
     )
 
     override fun preferitoAggiungi(a: Annuncio, utente: String) = toggle(a)
     override fun preferitoRimuovi(a: Annuncio, utente: String) = toggle(a)
 
+    /*
+     * v1.45.0 (2026-09-08) — CORREZIONE: "la pagina dei preferiti da' errore
+     * 403 per Vinted", segnalato dall'utente dopo che Vinted e' tornato
+     * raggiungibile (il KO del giorno prima era un problema loro, non
+     * nostro — nessun codice cambiato per quello).
+     *
+     * Questa chiamata non ha MAI portato le intestazioni anti-CSRF
+     * (csrf = true): da v1.2.0 era una semplice GET con i soli cookie. E'
+     * la stessa identica situazione gia' vista e risolta per il preferito
+     * singolo (toggle(), qui sopra, v1.6.0-v1.16.0): Vinted rifiuta con 403
+     * "access_denied" le chiamate senza quelle intestazioni (token CSRF,
+     * Platform, X-Next-App, X-Anon-Id — raccolte nella pagina al momento
+     * della chiamata, vedi MotoreRicerca.azione). Fin qui l'elenco preferiti
+     * evidentemente non le richiedeva (ha funzionato per mesi senza), quindi
+     * o e' cambiato lato Vinted (irrigidito anche sulle letture, non solo
+     * sulle scritture) o serve un session/token piu' fresco di quanto
+     * offrisse la sola pagina caricata all'avvio.
+     *
+     * Applicato lo stesso rimedio gia' confermato altrove, invece di
+     * indovinarne uno nuovo: csrf = true, che aggiunge le intestazioni E fa
+     * scattare il ricaricamento automatico + un ritentativo sul primo 403
+     * (vedi MotoreRicerca.azione). Aggiunta anche una riga in diagnostica
+     * (StatoRicerca.apriPreferiti) per il caso in cui questo non basti: fin
+     * qui un 403 su questa chiamata non lasciava alcuna traccia in
+     * "Esporta diagnostica" (il ramo senza csrf di azione() non scrive
+     * nulla li'), solo "risposta 403" a schermo — troppo poco per capire il
+     * prossimo passo senza un altro giro a vuoto.
+     *
+     * --- versione precedente (fino alla v1.44.0) ---
+     * override fun preferitiElenco(utente: String): Chiamata? =
+     *     if (utente.isBlank()) null
+     *     else Chiamata("GET", "/api/v2/users/$utente/items/favourites?per_page=200")
+     * --- fine versione precedente ---
+     */
     override fun preferitiElenco(utente: String): Chiamata? =
         if (utente.isBlank()) null
-        else Chiamata("GET", "/api/v2/users/$utente/items/favourites?per_page=200")
+        else Chiamata(
+            "GET", "/api/v2/users/$utente/items/favourites?per_page=200",
+            csrf = true
+        )
 
     /*
      * v1.8.0 — su Vinted l'elenco dei preferiti usa lo stesso serializzatore

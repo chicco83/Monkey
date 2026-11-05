@@ -30,8 +30,12 @@ package it.monkey.app
  */
 
 import android.app.AlertDialog
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
@@ -58,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -111,6 +116,44 @@ class MainActivity : ComponentActivity() {
      */
     private var mostraGuidaLogin by mutableStateOf(false)
 
+    /*
+     * v1.24.0 (2026-08-31) — prima voce del pannello Opzioni: cosa fare
+     * all'avvio. Vedi il commento su onCreate() piu' sotto per dove entra in
+     * gioco, e DialogoOpzioni.kt per il pannello.
+     */
+    private var avvioHome by mutableStateOf(false)
+    private var opzioniAperte by mutableStateOf(false)
+
+    /*
+     * v1.35.0 (2026-09-02) — auto-aggiornamento da GitHub Releases (vedi
+     * Aggiornamenti.kt). "aggiornamentoTrovato" pilota il dialogo in Compose
+     * (null = niente da mostrare); "idScaricamentoAggiornamento" non serve
+     * a Compose — nessuna UI dipende dal numero in se' — resta una var
+     * qualsiasi, letta solo dal ricevitore qui sotto per riconoscere "e'
+     * finito il MIO scaricamento" tra tutti quelli che DownloadManager
+     * potrebbe notificare.
+     */
+    private var aggiornamentoTrovato by mutableStateOf<Aggiornamento?>(null)
+    private var idScaricamentoAggiornamento: Long? = null
+
+    /**
+     * v1.35.0 — avvisato da DownloadManager quando l'APK scaricato e'
+     * pronto: recupera il content:// gia' pronto (vedi il commento in cima
+     * ad Aggiornamenti.kt) e passa all'installazione. Registrato in
+     * onCreate, tolto in onDestroy.
+     */
+    private val ricevitoreAggiornamento = object : BroadcastReceiver() {
+        override fun onReceive(contesto: Context, intent: Intent) {
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (id == -1L || id != idScaricamentoAggiornamento) return
+            val dm = getSystemService(DownloadManager::class.java)
+            val uri = dm?.getUriForDownloadedFile(id)
+            if (uri != null) Aggiornamenti.installa(this@MainActivity, uri)
+            else toast("Scaricamento dell'aggiornamento non riuscito, riprova")
+            idScaricamentoAggiornamento = null
+        }
+    }
+
     private val HOME = arrayOf("https://www.subito.it/", "https://www.vinted.it/")
 
     private var scriptPrologo: androidx.webkit.ScriptHandler? = null
@@ -118,17 +161,54 @@ class MainActivity : ComponentActivity() {
     private var scriptAnnunci: androidx.webkit.ScriptHandler? = null
     private var scriptApi: androidx.webkit.ScriptHandler? = null
     private var scriptZoom: androidx.webkit.ScriptHandler? = null
+    /** v1.64.0 — galleria foto a schermo intero sulle pagine annuncio Vinted (GalleriaVinted.kt). */
+    private var scriptGalleria: androidx.webkit.ScriptHandler? = null
+    private lateinit var vistaGalleria: ComposeView
+    /** Foto e indice della galleria aperta; null = chiusa. */
+    private var galleria by mutableStateOf<Pair<List<String>, Int>?>(null)
 
+    /*
+     * v1.36.0 (2026-09-04) — "vistaCompatta" tolto da StatoBarra, vedi il
+     * commento sulla data class in BarraSuperiore.kt.
+     *
+     * --- versione precedente (fino alla v1.35.0) ---
+     * StatoBarra(
+     *     modoRicerca = true, bloccoAttivo = true, vistaCompatta = false,
+     *     modoSonda = false, fonteVinted = false, scriptPagina = true,
+     *     ...
+     * --- fine versione precedente ---
+     */
     /** Stato osservato dalla barra Compose. */
+    /*
+     * v1.46.0 — "mostraGuida" tolto da qui insieme al resto: vedi il
+     * commento su StatoBarra.mostraGuida in BarraSuperiore.kt.
+     *
+     * --- versione precedente (fino alla v1.45.0) ---
+     * StatoBarra(
+     *     modoRicerca = true, bloccoAttivo = true,
+     *     modoSonda = false, fonteVinted = false, scriptPagina = true,
+     *     nascosti = 0, ricerche = 0, nuovi = 0,
+     *     titoloPagina = "", riga = "", avanzamento = null,
+     *     mostraGuida = false   // corretto dal primo aggiornaStato(), a prefs letti
+     * )
+     * --- fine versione precedente ---
+     */
     private var statoBarra by mutableStateOf(
         StatoBarra(
-            modoRicerca = true, bloccoAttivo = true, vistaCompatta = false,
+            modoRicerca = true, bloccoAttivo = true,
             modoSonda = false, fonteVinted = false, scriptPagina = true,
             nascosti = 0, ricerche = 0, nuovi = 0,
-            titoloPagina = "", riga = "", avanzamento = null,
-            mostraGuida = false   // corretto dal primo aggiornaStato(), a prefs letti
+            titoloPagina = "", riga = "", avanzamento = null
         )
     )
+
+    /*
+     * v1.36.0 (2026-09-04) — "novita' di questa versione": vedi Changelog.kt
+     * e DialogoNovita.kt. Confrontato con "changelogVisto" in prefs
+     * all'avvio (vedi onCreate); null = niente da mostrare, stesso schema
+     * degli altri dialoghi di stato (aggiornamentoTrovato, sopra).
+     */
+    private var novitaDaMostrare by mutableStateOf<VoceChangelog?>(null)
 
     // ---- v0.6.0: ricerche salvate e controlli automatici ----
     private var ricercheAperte by mutableStateOf(false)
@@ -182,8 +262,25 @@ class MainActivity : ComponentActivity() {
         scriptPagina = prefs.getBoolean("scriptPagina", true)
         // v1.15.0 — assente in prefs = non ancora vista = primo avvio davvero.
         mostraGuidaLogin = !prefs.getBoolean("guidaLoginVista", false)
+        // v1.24.0 — assente in prefs = comportamento di sempre (riprendi l'ultima ricerca).
+        avvioHome = prefs.getBoolean("avvioHome", false)
         nomePonte = nomeCasuale("nomePonte", "_")
         pref = nomeCasuale("prefisso", "")
+
+        /*
+         * v1.36.0 (2026-09-04) — "novita' di questa versione", una volta
+         * sola: si confronta la voce piu' recente del changelog (vedi
+         * Changelog.kt) con l'ultima gia' mostrata (salvata in prefs). Vale
+         * sia per chi aggiorna sia per un'installazione nuova: in entrambi i
+         * casi il numero salvato (0 di default) e' diverso da quello vero,
+         * quindi compare — esattamente "la prima volta che si apre questa
+         * versione". Si salva in DialogoNovita.chiudi (vedi il dialogo nella
+         * ComposeView qui sotto), non qui: se si salvasse subito e l'utente
+         * chiudesse l'app prima di vederlo, non lo rivedrebbe piu'.
+         */
+        Changelog.ultima()?.let { voce ->
+            if (prefs.getInt("changelogVisto", 0) != voce.versionCode) novitaDaMostrare = voce
+        }
 
         Regole.carica(this)
         Nascosti.carica(this)
@@ -211,6 +308,116 @@ class MainActivity : ComponentActivity() {
                             azioni = azioniRicerche(),
                             chiudi = { ricercheAperte = false }
                         )
+                        /*
+                         * v1.26.0 (2026-09-01) — sette voci in piu', spostate qui dal
+                         * menu dai tre pallini (vedi il commento in cima a
+                         * DialogoOpzioni.kt): stesse funzioni private di sempre,
+                         * chiamate da un altro posto — nessuna e' cambiata.
+                         *
+                         * --- versione precedente (fino alla v1.25.0) ---
+                         * if (opzioniAperte) DialogoOpzioni(
+                         *     avvioHome = avvioHome,
+                         *     azioni = AzioniOpzioni(
+                         *         cambiaAvvioHome = { acceso ->
+                         *             avvioHome = acceso
+                         *             prefs.edit().putBoolean("avvioHome", acceso).apply()
+                         *         }
+                         *     ),
+                         *     chiudi = { opzioniAperte = false }
+                         * )
+                         * --- fine versione precedente ---
+                         */
+                        // v1.24.0 — pannello Opzioni, stesso schema del dialogo sopra.
+                        if (opzioniAperte) DialogoOpzioni(
+                            avvioHome = avvioHome,
+                            modoSonda = statoBarra.modoSonda,
+                            azioni = AzioniOpzioni(
+                                cambiaAvvioHome = { acceso ->
+                                    avvioHome = acceso
+                                    prefs.edit().putBoolean("avvioHome", acceso).apply()
+                                },
+                                salvaBackup = { salvaBackup() },
+                                caricaRegole = { selettoreRegole.launch(arrayOf("*/*")) },
+                                cambiaSonda = {
+                                    modoSonda = !modoSonda
+                                    prefs.edit().putBoolean("modoSonda", modoSonda).apply()
+                                    RequestLog.dettaglio = modoSonda
+                                    toast(if (modoSonda) "Sonda accesa: lasciala accesa solo il tempo di raccogliere"
+                                          else "Sonda spenta")
+                                    registraScript(); web.reload(); aggiornaStato()
+                                },
+                                analizza = { analizzaPagina() },
+                                sondaOfferte = { sondaOfferte() },
+                                esporta = { esporta() },
+                                azzera = {
+                                    RequestLog.reset(); Regole.bloccate = 0; ApiLog.reset()
+                                    ultimoReportDom = "{}"; aggiornaStato()
+                                },
+                                // v1.35.0 — controllo manuale, vedi il commento su
+                                // AzioniOpzioni.cercaAggiornamenti in DialogoOpzioni.kt.
+                                cercaAggiornamenti = {
+                                    toast("Controllo in corso…")
+                                    Aggiornamenti.controlla(
+                                        this@MainActivity,
+                                        trovato = { agg -> aggiornamentoTrovato = agg },
+                                        aggiornato = { riuscito ->
+                                            if (riuscito && aggiornamentoTrovato == null)
+                                                toast("Sei già all'ultima versione")
+                                            else if (!riuscito)
+                                                toast("Controllo non riuscito: verifica la connessione")
+                                        }
+                                    )
+                                }
+                            ),
+                            chiudi = { opzioniAperte = false }
+                        )
+                        /*
+                         * v1.36.0 (2026-09-04) — "novita' di questa versione" (vedi
+                         * Changelog.kt e il commento in onCreate). Renderizzato PRIMA
+                         * del dialogo di aggiornamento qui sotto apposta: sono entrambi
+                         * AlertDialog, e se capitassero insieme (installazione appena
+                         * fatta + GitHub ha gia' una versione piu' nuova) due finestre
+                         * sovrapposte sarebbero confuse — si vede prima questa, che
+                         * riguarda la versione appena installata, e solo dopo averla
+                         * chiusa (novitaDaMostrare torna null) puo' comparire l'altra.
+                         */
+                        if (novitaDaMostrare != null) DialogoNovita(
+                            voce = novitaDaMostrare!!,
+                            chiudi = {
+                                prefs.edit().putInt("changelogVisto", novitaDaMostrare!!.versionCode).apply()
+                                novitaDaMostrare = null
+                            }
+                        )
+                        /*
+                         * v1.35.0 (2026-09-02) — "nuova versione disponibile", vedi
+                         * Aggiornamenti.controlla() in fondo a onCreate() e il
+                         * ricevitoreAggiornamento qui sopra. Stesso schema dei due
+                         * dialoghi sopra: null = niente da mostrare.
+                         *
+                         * v1.36.0 — "&& novitaDaMostrare == null" aggiunto: vedi il
+                         * commento sopra DialogoNovita qui sopra.
+                         */
+                        if (aggiornamentoTrovato != null && novitaDaMostrare == null) DialogoAggiornamento(
+                            aggiornamento = aggiornamentoTrovato!!,
+                            scarica = {
+                                idScaricamentoAggiornamento =
+                                    Aggiornamenti.scarica(this@MainActivity, aggiornamentoTrovato!!)
+                                toast("Scaricamento avviato: segui l'avanzamento dalla notifica")
+                                aggiornamentoTrovato = null
+                            },
+                            chiudi = { aggiornamentoTrovato = null }
+                        )
+                        /*
+                         * v1.46.0 (2026-09-08) — "come accedere con il tuo
+                         * account", sostituisce il banner della v1.15.0 (vedi
+                         * DialogoGuidaLogin.kt per il perche'). Ultimo della
+                         * catena, stesso motivo degli altri due: un utente al
+                         * primissimo avvio potrebbe vedere anche "novita'" e
+                         * "aggiornamento disponibile" insieme a questo, e tre
+                         * finestre sovrapposte sarebbero confuse quanto due.
+                         */
+                        if (mostraGuidaLogin && novitaDaMostrare == null && aggiornamentoTrovato == null)
+                            DialogoGuidaLogin(chiudi = { chiudiGuidaLogin() })
                     }
                 }
             },
@@ -257,13 +464,36 @@ class MainActivity : ComponentActivity() {
                         salva = { salvaRicerca() },
                         // v1.9.0 — preferiti e ricerche salvate sono passati in barra
                         apriUrl = { u -> apriIndirizzo(u) },
-                        compatta = vistaCompatta
+                        compatta = vistaCompatta,
+                        // v1.36.0 — la lente nel campo di ricerca e la nuova icona
+                        // compatta/estesa, vedi i commenti in SchermataRicerca.kt.
+                        apriRicerche = { apriRicercheSalvate() },
+                        cambiaVista = { cambiaVista() }
                     )
                 }
             }
         }
         contenitore.addView(
             vistaRicerca,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        /*
+         * v1.64.0 (2026-09-28) — la galleria a schermo intero sta SOPRA sia il
+         * WebView sia la ricerca, nello stesso contenitore: visibile solo
+         * quando e' aperta (apriGalleria dal ponte, vedi GalleriaVinted.kt).
+         */
+        vistaGalleria = ComposeView(this).apply {
+            visibility = View.GONE
+            setContent {
+                galleria?.let { (foto, indice) ->
+                    GalleriaSchermoIntero(foto, indice) { chiudiGalleria() }
+                }
+            }
+        }
+        contenitore.addView(
+            vistaGalleria,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             )
@@ -299,12 +529,53 @@ class MainActivity : ComponentActivity() {
          * }
          * --- fine versione precedente ---
          */
+        /*
+         * v1.18.0 (2026-08-31) — CORREZIONE: da una ricerca con risultati,
+         * "indietro" usciva subito dall'app invece di tornare alla schermata
+         * iniziale (le ultime proposte).
+         *
+         * Il ramo che riportava alla home esisteva gia', ma solo per i
+         * preferiti ("statoRicerca.modoPreferiti"): una ricerca normale
+         * (primaRicercaFatta = true, modoPreferiti = false) cadeva dritta nel
+         * ramo "else" e usciva. Il difetto peggiorava con piu' WebView aperte
+         * in background: Android puo' eliminare il processo per liberare
+         * memoria, e riaprire dall'icona ricreava l'attivita' da zero — da
+         * qui "devo chiudere dal task manager per tornare qui", perche' la
+         * ricerca perduta non tornava nemmeno forzando la chiusura, si
+         * ripartiva vuoti (vedi StatoRicerca.ripristinaUltimaRicerca, v1.17.0,
+         * che attutisce quel caso separato).
+         *
+         * Il rimedio e' allargare la condizione a "primaRicercaFatta" invece
+         * di "modoPreferiti": modoPreferiti la implica gia' (vedi apriPreferiti
+         * in StatoRicerca), quindi un ramo solo copre entrambi i casi. Il
+         * corpo diventa vaiAllaHome() invece di ripetere le stesse due righe.
+         *
+         * --- versione precedente (fino alla v1.17.0) ---
+         * indietro = onBackPressedDispatcher.addCallback(this) {
+         *     when {
+         *         !modoRicerca && web.canGoBack() -> web.goBack()
+         *         !modoRicerca -> { modoRicerca = true; applicaModo(); aggiornaStato() }
+         *         // v1.8.0 — dai preferiti si torna alla schermata iniziale, non fuori
+         *         statoRicerca.modoPreferiti -> { statoRicerca.tornaAllaRicerca(); aggiornaStato() }
+         *         else -> {
+         *             isEnabled = false
+         *             onBackPressedDispatcher.onBackPressed()
+         *             isEnabled = true
+         *         }
+         *     }
+         * }
+         * --- fine versione precedente ---
+         */
+        /*
+         * v1.64.0 — con la galleria aperta "indietro" la chiude e basta.
+         * --- versione precedente: stesso "when" senza il primo ramo ---
+         */
         indietro = onBackPressedDispatcher.addCallback(this) {
             when {
+                galleria != null -> chiudiGalleria()
                 !modoRicerca && web.canGoBack() -> web.goBack()
                 !modoRicerca -> { modoRicerca = true; applicaModo(); aggiornaStato() }
-                // v1.8.0 — dai preferiti si torna alla schermata iniziale, non fuori
-                statoRicerca.modoPreferiti -> { statoRicerca.tornaAllaRicerca(); aggiornaStato() }
+                statoRicerca.primaRicercaFatta -> vaiAllaHome()
                 else -> {
                     // Si cede il passo al sistema per un colpo solo, poi si torna in servizio.
                     isEnabled = false
@@ -314,7 +585,43 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        /*
+         * v1.35.0 (2026-09-02) — auto-aggiornamento. Il ricevitore va
+         * registrato prima che parta qualunque scaricamento (per questo qui,
+         * non dopo); RECEIVER_NOT_EXPORTED perche' e' un broadcast che ci
+         * riguarda solo noi (il nostro download), nessun'altra app deve
+         * poterlo innescare. Il controllo vero e proprio e' silenzioso (vedi
+         * il commento su Aggiornamenti.controlla): se fallisce o non trova
+         * nulla, semplicemente non succede niente.
+         */
+        ContextCompat.registerReceiver(
+            this, ricevitoreAggiornamento,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        // v1.35.0 — parametro nominato: "trovato" non e' l'ultimo della firma
+        // (c'e' "aggiornato" dopo, con un default), quindi qui la lambda finale
+        // andrebbe legata al parametro sbagliato se lasciata cosi' com'e'.
+        Aggiornamenti.controlla(this, trovato = { agg -> aggiornamentoTrovato = agg })
+
         gestisciIntent(intent)   // v0.6.0: arrivo da una notifica
+        /*
+         * v1.24.0 (2026-08-31) — la ripresa automatica (v1.17.0, sotto) ora e'
+         * una scelta: "avvioHome" viene dal pannello Opzioni. Chi preferisce
+         * vedere prima la home (le ultime proposte) puo' spegnerla; di default
+         * resta accesa, cioe' il comportamento di sempre, per non sorprendere
+         * chi gia' usa l'app.
+         *
+         * --- versione precedente (fino alla v1.23.0) ---
+         * // v1.17.0 — nessuna ricerca gia' avviata (ne' da notifica ne' da link):
+         * // se l'app e' ripartita da zero, si riprende l'ultima ricerca fatta.
+         * // Vedi il commento su StatoRicerca.ripristinaUltimaRicerca().
+         * if (statoRicerca.ripristinaUltimaRicerca()) { modoRicerca = true; applicaModo(); aggiornaStato() }
+         * --- fine versione precedente ---
+         */
+        if (!avvioHome && statoRicerca.ripristinaUltimaRicerca()) {
+            modoRicerca = true; applicaModo(); aggiornaStato()
+        }
     }
 
     /*
@@ -323,9 +630,31 @@ class MainActivity : ComponentActivity() {
      * in servizio. Costa niente e rende impossibile che il difetto torni per
      * una strada diversa da quella corretta.
      */
+    /*
+     * v1.20.0 (2026-08-31) — CORREZIONE: un'offerta appena fatta compariva in
+     * lista solo forzando la chiusura dell'app dal task manager. Vedi il
+     * commento su StatoRicerca.aggiornaOfferteAlRitorno() per la causa (il
+     * limite dei cinque minuti di Offerte.aggiorna() sopravvive finche' vive
+     * il processo, e un semplice ritorno in foreground non lo tocca). Qui,
+     * a ogni ritorno vero nell'app, si forza una rilettura.
+     *
+     * --- versione precedente (fino alla v1.19.0) ---
+     * override fun onResume() {
+     *     super.onResume()
+     *     indietro?.isEnabled = true
+     * }
+     * --- fine versione precedente ---
+     */
+    /*
+     * v1.63.0 (2026-09-24) — anche il controllo del login (al massimo ogni
+     * 10 minuti, vedi StatoRicerca.controllaAccessi).
+     * --- versione precedente: identica, senza controllaAccessi() ---
+     */
     override fun onResume() {
         super.onResume()
         indietro?.isEnabled = true
+        statoRicerca.aggiornaOfferteAlRitorno()
+        statoRicerca.controllaAccessi()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -354,32 +683,90 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        /*
+         * v1.39.0 (2026-09-05) — CORREZIONE: toccando l'avviso di una ricerca
+         * salvata, la ricerca si apriva ma con tutti gli annunci mischiati,
+         * vecchi e nuovi — l'utente si aspettava (giustamente: l'avviso parla
+         * proprio di annunci NUOVI) di trovare gia' attivo il filtro "solo
+         * nuovi". "cerca()" non tocca mai "soloNuovi" da sola (e' un
+         * interruttore che l'utente decide, vedi StatoRicerca.soloNuovi):
+         * va acceso qui, l'unico punto che sa che la ricerca nasce da un
+         * avviso e non da un tocco manuale sul campo di ricerca.
+         *
+         * Il confronto "cosa e' nuovo" usa lo storico locale delle ricerche
+         * gia' fatte in primo piano (StoricoRicerche, popolato da
+         * StatoRicerca.finita() a ogni ricerca), non l'elenco che il
+         * controllo in background ha gia' segnato come "visto" per questa
+         * ricerca salvata (RicercheSalvate/registraEsito, un file diverso):
+         * sono due dedup separate, una per il badge del campanello e le
+         * notifiche, una per il filtro "solo nuovi" gia' esistente in vista.
+         * Riusare quest'ultima e' la scelta piu' semplice e coerente con
+         * quello che l'utente vede gia' quando usa il filtro a mano.
+         *
+         * --- versione precedente ---
+         * val q = i.getStringExtra("query") ?: return
+         * i.getStringExtra("ricerca")?.let { RicercheSalvate.segnaLetta(this, it) }
+         * statoRicerca.query = q
+         * modoRicerca = true
+         * applicaModo()
+         * statoRicerca.cerca()
+         * elencoRicerche = RicercheSalvate.tutte()
+         * aggiornaStato()
+         * --- fine versione precedente ---
+         */
         val q = i.getStringExtra("query") ?: return
         i.getStringExtra("ricerca")?.let { RicercheSalvate.segnaLetta(this, it) }
         statoRicerca.query = q
         modoRicerca = true
         applicaModo()
         statoRicerca.cerca()
+        statoRicerca.soloNuovi = true
         elencoRicerche = RicercheSalvate.tutte()
         aggiornaStato()
     }
 
     private fun azioni() = AzioniBarra(
-        cambiaModo = { modoRicerca = !modoRicerca; applicaModo(); aggiornaStato() },
+        /*
+         * v1.37.0 (2026-09-04) — "cambiaModo" tolto: era l'icona lente "di
+         * cui non capisco il funzionamento" segnalata dall'utente (vedi il
+         * commento sulle actions() della barra, BarraSuperiore.kt). Chi torna
+         * alla ricerca dall'icona "home" continua a rileggere le offerte
+         * (vaiAllaHome() -> StatoRicerca.tornaAllaRicerca(), invariato); solo
+         * "indietro" da solo non lo fa mai, come gia' prima di questa
+         * versione — non e' un percorso che questa rimozione cambia.
+         *
+         * --- versione precedente (fino alla v1.36.0, dal v1.21.0) ---
+         * cambiaModo = {
+         *     modoRicerca = !modoRicerca
+         *     applicaModo()
+         *     if (modoRicerca) statoRicerca.aggiornaOfferteAlRitorno()
+         *     aggiornaStato()
+         * },
+         * --- fine versione precedente ---
+         */
         cambiaBlocco = {
             bloccoAttivo = !bloccoAttivo
             prefs.edit().putBoolean("bloccoAttivo", bloccoAttivo).apply()
             registraScript(); web.reload(); aggiornaStato()
         },
-        cambiaVista = {
-            vistaCompatta = !vistaCompatta
-            prefs.edit().putBoolean("vistaCompatta", vistaCompatta).apply()
-            // La lista si ridisegna da sola; il WebView si ricarica solo se ha
-            // qualcosa da ricaricare, altrimenti e' lavoro per niente.
-            registraScript()
-            if (!web.url.isNullOrBlank()) web.reload()
-            aggiornaStato()
-        },
+        /*
+         * v1.36.0 (2026-09-04) — "cambiaVista" tolto da qui: era per la voce
+         * "Vista compatta" del menu ⋮, tolta anche lei (vedi il commento su
+         * AzioniBarra in BarraSuperiore.kt). Stesso corpo, spostato nella
+         * nuova funzione privata cambiaVista() qui sotto — la chiama ora
+         * SchermataRicerca direttamente (vedi il commento sulla sua chiamata
+         * qui sopra).
+         *
+         * --- versione precedente (fino alla v1.35.0) ---
+         * cambiaVista = {
+         *     vistaCompatta = !vistaCompatta
+         *     prefs.edit().putBoolean("vistaCompatta", vistaCompatta).apply()
+         *     registraScript()
+         *     if (!web.url.isNullOrBlank()) web.reload()
+         *     aggiornaStato()
+         * },
+         * --- fine versione precedente ---
+         */
         cambiaScriptPagina = {
             scriptPagina = !scriptPagina
             prefs.edit().putBoolean("scriptPagina", scriptPagina).apply()
@@ -404,16 +791,28 @@ class MainActivity : ComponentActivity() {
             azzeraCronologia = true
             sullaPaginaAperta = true              // v1.5.0
             web.loadUrl(HOME[fonte])
-            // v1.15.0 — e' proprio il percorso che la guida indicava: se era
-            // ancora visibile, l'utente l'ha appena seguita fino in fondo.
-            if (mostraGuidaLogin) chiudiGuidaLogin() else aggiornaStato()
+            /*
+             * v1.46.0 — il ramo "era ancora visibile la guida" non serve
+             * piu': il dialogo che l'ha sostituita (DialogoGuidaLogin) blocca
+             * lo schermo finche' non lo si chiude apposta, quindi non si puo'
+             * arrivare fin qui con "mostraGuidaLogin" ancora vero.
+             *
+             * --- versione precedente (fino alla v1.45.0) ---
+             * // v1.15.0 — e' proprio il percorso che la guida indicava: se era
+             * // ancora visibile, l'utente l'ha appena seguita fino in fondo.
+             * if (mostraGuidaLogin) chiudiGuidaLogin() else aggiornaStato()
+             * --- fine versione precedente ---
+             */
+            aggiornaStato()
         },
         apriNascosti = { mostraNascosti() },
         apriPreferiti = {                       // v1.9.0
             modoRicerca = true; applicaModo()
             statoRicerca.apriPreferiti(); aggiornaStato()
         },
-        apriRicerche = { elencoRicerche = RicercheSalvate.tutte(); ricercheAperte = true },
+        // v1.36.0 — corpo spostato in apriRicercheSalvate(), riusata anche
+        // dalla lente nel campo di ricerca (vedi SchermataRicerca.kt).
+        apriRicerche = { apriRicercheSalvate() },
         caricaRegole = { selettoreRegole.launch(arrayOf("*/*")) },
         salvaBackup = { salvaBackup() },
         analizza = { analizzaPagina() },
@@ -451,8 +850,71 @@ class MainActivity : ComponentActivity() {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
             } catch (t: Throwable) { toast("Nessun browser disponibile") }
         },
-        chiudiGuida = { chiudiGuidaLogin() }      // v1.15.0
+        /*
+         * v1.46.0 — "chiudiGuida" tolto insieme al banner: vedi il commento
+         * su AzioniBarra.chiudiGuida in BarraSuperiore.kt.
+         *
+         * --- versione precedente (fino alla v1.45.0) ---
+         * chiudiGuida = { chiudiGuidaLogin() },      // v1.15.0
+         * --- fine versione precedente ---
+         */
+        vaiAllaHome = { vaiAllaHome() },            // v1.18.0
+        apriOpzioni = { opzioniAperte = true }      // v1.24.0
     )
+
+    /*
+     * v1.18.0 (2026-08-31) — NUOVO: torna alla schermata iniziale ("le tue
+     * ultime proposte") da qualunque punto — ricerca in corso, preferiti, o
+     * dentro "Sito". La stessa funzione serve sia all'icona in barra sia al
+     * ramo nuovo del gestore di "indietro" qui sotto: un solo posto che
+     * decide cosa vuol dire "torna alla home".
+     */
+    /*
+     * v1.36.0 (2026-09-04) — nuovo: corpo di quella che era "apriRicerche"
+     * dentro azioni() (vedi il commento li'), estratto qui perche' da questa
+     * versione lo chiamano in due posti — la campanella in barra e la lente
+     * nel campo di ricerca (SchermataRicerca.kt) — e una funzione sola tiene
+     * la logica in un punto invece di due lambda da mantenere allineate.
+     */
+    private fun apriRicercheSalvate() {
+        elencoRicerche = RicercheSalvate.tutte()
+        ricercheAperte = true
+    }
+
+    /*
+     * v1.36.0 (2026-09-04) — nuovo: corpo di quella che era "cambiaVista"
+     * dentro azioni() (vedi il commento li'), estratto in una funzione
+     * perche' ora la chiama SchermataRicerca (la nuova icona sotto il campo
+     * di ricerca), non piu' una voce del menu ⋮.
+     */
+    private fun cambiaVista() {
+        vistaCompatta = !vistaCompatta
+        prefs.edit().putBoolean("vistaCompatta", vistaCompatta).apply()
+        // La lista si ridisegna da sola; il WebView si ricarica solo se ha
+        // qualcosa da ricaricare, altrimenti e' lavoro per niente.
+        registraScript()
+        if (!web.url.isNullOrBlank()) web.reload()
+        aggiornaStato()
+    }
+
+    private fun vaiAllaHome() {
+        if (!modoRicerca) { modoRicerca = true; applicaModo() }
+        statoRicerca.tornaAllaRicerca()
+        aggiornaStato()
+    }
+
+    /** v1.64.0 — apre/chiude la galleria a schermo intero (GalleriaVinted.kt). */
+    private fun apriGalleria(foto: List<String>, indice: Int) {
+        if (foto.isEmpty()) return
+        galleria = foto to indice
+        vistaGalleria.visibility = View.VISIBLE
+        vistaGalleria.bringToFront()
+    }
+
+    private fun chiudiGalleria() {
+        galleria = null
+        vistaGalleria.visibility = View.GONE
+    }
 
     /** v1.15.0 — chiude il banner di guida al login e non lo mostra mai piu'. */
     private fun chiudiGuidaLogin() {
@@ -568,8 +1030,33 @@ class MainActivity : ComponentActivity() {
                 if (azzeraCronologia && sullaPaginaAperta) view?.clearHistory()
                 avanzamento = null
                 aggiornaStato()
+                /*
+                 * v1.52.0 (2026-09-15) — una terza sonda, sempre nello stesso
+                 * punto: "/api/v2/catalog/items" ha smesso di rispondere
+                 * (404 con la pagina generica dell'app, confermato da
+                 * diagnostica) e serve capire dove sta finito l'elenco
+                 * annunci sulla pagina di ricerca vera di Vinted — vedi il
+                 * commento in cima a SondaCatalogoVinted.kt. Stessa
+                 * condizione e stesso ritardo delle altre due.
+                 *
+                 * --- versione precedente (v1.42.0-v1.51.0) ---
+                 * if (modoSonda) view?.postDelayed({
+                 *     analizzaPagina()
+                 *     web.evaluateJavascript(DescrizioniVinted.scriptSonda(nomePonte), null)
+                 * }, 1500)
+                 * --- fine versione precedente ---
+                 *
+                 * --- versione precedente (fino alla v1.41.0) ---
+                 * // La sonda DOM percorre l'intero albero: parte solo se richiesta.
+                 * if (modoSonda) view?.postDelayed({ analizzaPagina() }, 1500)
+                 * --- fine versione precedente ---
+                 */
                 // La sonda DOM percorre l'intero albero: parte solo se richiesta.
-                if (modoSonda) view?.postDelayed({ analizzaPagina() }, 1500)
+                if (modoSonda) view?.postDelayed({
+                    analizzaPagina()
+                    web.evaluateJavascript(DescrizioniVinted.scriptSonda(nomePonte), null)
+                    web.evaluateJavascript(SondaCatalogoVinted.script(nomePonte), null)
+                }, 1500)
             }
         }
 
@@ -676,6 +1163,7 @@ class MainActivity : ComponentActivity() {
         scriptAnnunci?.remove(); scriptAnnunci = null
         scriptApi?.remove(); scriptApi = null
         scriptZoom?.remove(); scriptZoom = null
+        scriptGalleria?.remove(); scriptGalleria = null   // v1.64.0
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
 
         val subito = setOf("https://*.subito.it", "https://subito.it")
@@ -690,6 +1178,11 @@ class MainActivity : ComponentActivity() {
 
         // v1.0.2 — sblocca l'ingrandimento delle foto su entrambi i siti
         scriptZoom = WebViewCompat.addDocumentStartJavaScript(web, Zoom.script(pref), tutte)
+
+        // v1.64.0 — galleria a schermo intero, solo Vinted (vedi GalleriaVinted.kt)
+        scriptGalleria = WebViewCompat.addDocumentStartJavaScript(
+            web, GalleriaVinted.script(nomePonte, pref), setOf("https://*.vinted.it", "https://vinted.it")
+        )
 
         if (bloccoAttivo) scriptCosmetico = WebViewCompat.addDocumentStartJavaScript(
             web, Cosmetici.script(Regole.cssNascondi, pref), subito
@@ -720,6 +1213,16 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun nascostiJson(): String = Nascosti.idJson()
 
+        /** v1.64.0 — dalla pagina annuncio Vinted: apre la galleria dell'app. */
+        @JavascriptInterface
+        fun apriGalleria(json: String, indice: Int) {
+            val foto = try {
+                val a = org.json.JSONArray(json)
+                (0 until a.length()).mapNotNull { a.optString(it).takeIf { u -> u.startsWith("http") } }
+            } catch (t: Throwable) { emptyList() }
+            runOnUiThread { this@MainActivity.apriGalleria(foto, indice) }
+        }
+
         @JavascriptInterface
         fun reportDom(json: String) {
             ultimoReportDom = json
@@ -736,9 +1239,19 @@ class MainActivity : ComponentActivity() {
     // ------------------------------------------------------------------
     // Schermate e comandi
     // ------------------------------------------------------------------
+    /*
+     * v1.63.0 (2026-09-24) — tornando alla ricerca da "Sito" (dove si fa il
+     * login) si ricontrolla SUBITO il login, senza il limite dei 10 minuti:
+     * l'avviso in home deve sparire appena si e' rientrati.
+     * --- versione precedente: identica, senza il controllo ---
+     */
+    private var eraInRicerca = true
+
     private fun applicaModo() {
         vistaRicerca.visibility = if (modoRicerca) View.VISIBLE else View.GONE
         web.visibility = if (modoRicerca) View.GONE else View.VISIBLE
+        if (modoRicerca && !eraInRicerca && ::statoRicerca.isInitialized) statoRicerca.controllaAccessi(forza = true)
+        eraInRicerca = modoRicerca
         if (modoRicerca) avanzamento = null
         if (!modoRicerca && web.url.isNullOrBlank()) web.loadUrl(HOME[fonte])
     }
@@ -873,10 +1386,11 @@ class MainActivity : ComponentActivity() {
                 (if (card >= 0) " · card $card" else "") +
                 " · nascosti ${Nascosti.quanti()} · regole ${Regole.versioneRegole}"
 
+        // v1.36.0 — "vistaCompatta" tolto, vedi il commento su StatoBarra in
+        // BarraSuperiore.kt.
         statoBarra = StatoBarra(
             modoRicerca = modoRicerca,
             bloccoAttivo = bloccoAttivo,
-            vistaCompatta = vistaCompatta,
             modoSonda = modoSonda,
             fonteVinted = fonte == 1,
             scriptPagina = scriptPagina,
@@ -885,8 +1399,18 @@ class MainActivity : ComponentActivity() {
             nuovi = RicercheSalvate.nuoviTotali(),
             titoloPagina = titoloPagina,
             riga = riga,
-            avanzamento = avanzamento,
-            mostraGuida = mostraGuidaLogin   // v1.15.0
+            avanzamento = avanzamento
+            /*
+             * v1.46.0 — "mostraGuida" tolto: vedi il commento su
+             * StatoBarra.mostraGuida in BarraSuperiore.kt. "mostraGuidaLogin"
+             * ora pilota DialogoGuidaLogin direttamente dalla ComposeView di
+             * onCreate, non passa piu' da qui.
+             *
+             * --- versione precedente (fino alla v1.45.0) ---
+             * avanzamento = avanzamento,
+             * mostraGuida = mostraGuidaLogin   // v1.15.0
+             * --- fine versione precedente ---
+             */
         )
     }
 
@@ -951,6 +1475,28 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /*
+     * v1.27.0 (2026-09-01) — aggiunto "controllo-log.txt": le notifiche
+     * delle ricerche salvate non arrivavano, e fino a questa versione non
+     * c'era modo di vedere cosa fa davvero il controllo automatico quando
+     * gira in background, ore dopo che l'app e' stata chiusa. Vedi il
+     * commento su Controllore.doWork().
+     *
+     * --- versione precedente (fino alla v1.26.0) ---
+     * private fun esporta() {
+     *     val ok = listOf(
+     *         scriviInDownload("requests.json", RequestLog.requestsJson()),
+     *         scriviInDownload("blocklist.json", RequestLog.blocklistJson()),
+     *         scriviInDownload("selectors.json", ultimoReportDom),
+     *         scriviInDownload("nascosti.json", Nascosti.esportaJson()),
+     *         scriviInDownload("api.json", ApiLog.json()),
+     *         scriviInDownload("offerte.json", SondaOfferte.json()),   // v1.3.0
+     *         scriviInDownload("ricerca-diagnostica.txt", motore.diagnostica.toString())
+     *     ).all { it }
+     *     toast(if (ok) "Esportati in Download/SubitoPlus" else "Esportazione non riuscita")
+     * }
+     * --- fine versione precedente ---
+     */
     private fun esporta() {
         val ok = listOf(
             scriviInDownload("requests.json", RequestLog.requestsJson()),
@@ -959,7 +1505,8 @@ class MainActivity : ComponentActivity() {
             scriviInDownload("nascosti.json", Nascosti.esportaJson()),
             scriviInDownload("api.json", ApiLog.json()),
             scriviInDownload("offerte.json", SondaOfferte.json()),   // v1.3.0
-            scriviInDownload("ricerca-diagnostica.txt", motore.diagnostica.toString())
+            scriviInDownload("ricerca-diagnostica.txt", motore.diagnostica.toString()),
+            scriviInDownload("controllo-log.txt", Controllore.leggiLog(this))
         ).all { it }
         toast(if (ok) "Esportati in Download/SubitoPlus" else "Esportazione non riuscita")
     }
@@ -983,6 +1530,12 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         CookieManager.getInstance().flush()
+    }
+
+    /** v1.35.0 — toglie il ricevitore registrato in onCreate (vedi sopra). */
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(ricevitoreAggiornamento)
     }
 
     private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()

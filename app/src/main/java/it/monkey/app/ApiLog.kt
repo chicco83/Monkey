@@ -24,7 +24,20 @@ object ApiLog {
     private const val MAX_ENDPOINT = 80
     // v1.0.6: alzato da 2500. Un elenco di conversazioni o di offerte veniva
     // troncato proprio dove comincia a essere interessante.
-    private const val MAX_CORPO = 6000
+    //
+    // v1.55.0 (2026-09-16): alzato da 6000. La sonda SONDA-CATALOGO (vedi
+    // SondaCatalogoVinted.kt) ora riporta l'HTML vero di piu' card di
+    // annuncio Vinted trovate nel DOM — un solo campione completo piu' un
+    // elenco compatto per una decina di annunci supera i 6000 caratteri e
+    // veniva tagliato a meta' di un JSON, rendendolo illeggibile. Nessun
+    // altro chiamante di registra() manda regolarmente corpi cosi' lunghi:
+    // il costo e' solo qualche KB in piu' nel file "api.json" esportato,
+    // mai scritto su disco fuori da "Esporta diagnostica".
+    //
+    // --- versione precedente ---
+    // private const val MAX_CORPO = 6000
+    // --- fine versione precedente ---
+    private const val MAX_CORPO = 10000
     private const val MAX_INVIO = 1200
 
     private data class Voce(
