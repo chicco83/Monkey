@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Monkey — simbolo dell'icona | v1.13.0 (2026-08-31)
+
+  La scimmia che "prende quando vuoi qualcosa e ti metti a cercarla usata
+  perche' non hai soldi": occhi spalancati e asimmetrici (uno guarda su,
+  l'altro giu': l'espressione un po' matta voluta), sopracciglio destro
+  alzato di scatto, bocca aperta, e un braccio teso in alto con in pugno
+  un mazzetto di banconote verdi. E' il simbolo scelto al posto del
+  setaccio: quello raccontava il filtro degli annunci, questo racconta
+  perche' li cerchi.
+
+  [versione precedente, v1.0.1 del 2026-08-30 — "il setaccio"]
+  <vector xmlns:android="http://schemas.android.com/apk/res/android"
+      android:width="108dp" android:height="108dp"
+      android:viewportWidth="108" android:viewportHeight="108">
+      <path android:pathData="M42,27 m-4.4,0 a4.4,4.4 0 1,0 8.8,0 a4.4,4.4 0 1,0 -8.8,0"
+          android:fillColor="#E0A452" />
+      <path android:pathData="M66,27 m-4.4,0 a4.4,4.4 0 1,0 8.8,0 a4.4,4.4 0 1,0 -8.8,0"
+          android:fillColor="#E0A452" />
+      <path android:pathData="M30,38 L78,38 L59,58 L59,73 L49,67 L49,58 Z"
+          android:strokeColor="#FFFFFF" android:strokeWidth="7.5"
+          android:strokeLineJoin="round" android:strokeLineCap="round" />
+      <path android:pathData="M54,83 m-4.4,0 a4.4,4.4 0 1,0 8.8,0 a4.4,4.4 0 1,0 -8.8,0"
+          android:fillColor="#E0A452" />
+  </vector>
+  [fine versione precedente]
+
+  Nota sulla composizione (invariata dalla versione precedente): nell'icona
+  adattiva solo il cerchio centrale di circa 66 unita' su 108 e' sempre
+  visibile; il resto lo ritaglia il launcher con la forma che preferisce.
+  La testa della scimmia sta tutta dentro quel cerchio; il pugno coi soldi,
+  in alto a destra, sconfina apposta verso il bordo — su qualche forma di
+  ritaglio si vedra' un po' tagliato, ed e' voluto: da' il senso del gesto
+  "brandire i soldi", non serve che sia tutto visibile ovunque.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- orecchie, sotto la testa -->
+    <path android:pathData="M25,42 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0"
+        android:fillColor="#5C3A21" />
+    <path android:pathData="M25,42 m-6.5,0 a6.5,6.5 0 1,0 13,0 a6.5,6.5 0 1,0 -13,0"
+        android:fillColor="#EFCB9B" />
+    <path android:pathData="M83,42 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0"
+        android:fillColor="#5C3A21" />
+    <path android:pathData="M83,42 m-6.5,0 a6.5,6.5 0 1,0 13,0 a6.5,6.5 0 1,0 -13,0"
+        android:fillColor="#EFCB9B" />
+
+    <!-- testa -->
+    <path android:pathData="M54,52 m-28,0 a28,28 0 1,0 56,0 a28,28 0 1,0 -56,0"
+        android:fillColor="#7A4A23" />
+
+    <!-- muso, piu' chiaro -->
+    <path android:pathData="M54,61 m-20,0 a20,17 0 1,0 40,0 a20,17 0 1,0 -40,0"
+        android:fillColor="#EFCB9B" />
+
+    <!-- sopracciglia, alzate in modo asimmetrico: l'aria un po' matta -->
+    <path android:pathData="M34,39 L51,35"
+        android:strokeColor="#3A2312" android:strokeWidth="4.6"
+        android:strokeLineCap="round" />
+    <path android:pathData="M58,29 L75,35"
+        android:strokeColor="#3A2312" android:strokeWidth="4.6"
+        android:strokeLineCap="round" />
+
+    <!-- occhi spalancati, sguardo scoordinato -->
+    <path android:pathData="M44,50 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0"
+        android:fillColor="#FFFFFF" />
+    <path android:pathData="M46,53 m-3.3,0 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0"
+        android:fillColor="#201008" />
+    <path android:pathData="M65,47 m-8.5,0 a8.5,8.5 0 1,0 17,0 a8.5,8.5 0 1,0 -17,0"
+        android:fillColor="#FFFFFF" />
+    <path android:pathData="M62,44 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"
+        android:fillColor="#201008" />
+
+    <!-- naso -->
+    <path android:pathData="M54,62 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0"
+        android:fillColor="#3A2312" />
+
+    <!-- bocca spalancata -->
+    <path android:pathData="M42,68 Q54,84 66,68 Q54,79 42,68 Z"
+        android:fillColor="#3A2312" />
+    <path android:pathData="M46,69 L62,69"
+        android:strokeColor="#FFFFFF" android:strokeWidth="2.6"
+        android:strokeLineCap="round" />
+
+    <!-- braccio teso verso l'alto -->
+    <path android:pathData="M70,80 C79,67 84,49 86,33"
+        android:strokeColor="#7A4A23" android:strokeWidth="13"
+        android:strokeLineCap="round" />
+
+    <!-- mazzetto di banconote, tenuto in pugno -->
+    <group android:pivotX="83" android:pivotY="18" android:rotation="-14">
+        <path android:pathData="M71,10 L95,10 L95,25 L71,25 Z"
+            android:fillColor="#2E7D32" />
+        <path android:pathData="M74,13 L92,13 L92,22 L74,22 Z"
+            android:strokeColor="#A5D6A7" android:strokeWidth="1.2" />
+        <path android:pathData="M83,13.5 m-3.4,0 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0"
+            android:fillColor="#66BB6A" />
+    </group>
+    <group android:pivotX="83" android:pivotY="18" android:rotation="4">
+        <path android:pathData="M71,13 L95,13 L95,28 L71,28 Z"
+            android:fillColor="#43A047" />
+        <path android:pathData="M74,16 L92,16 L92,25 L74,25 Z"
+            android:strokeColor="#C8E6C9" android:strokeWidth="1.2" />
+        <path android:pathData="M83,20.5 m-3.4,0 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0"
+            android:fillColor="#81C784" />
+    </group>
+
+    <!-- pugno, sopra il mazzetto -->
+    <path android:pathData="M86,30 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+        android:fillColor="#7A4A23" />
+    <path android:pathData="M82,25 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"
+        android:fillColor="#5C3A21" />
+</vector>

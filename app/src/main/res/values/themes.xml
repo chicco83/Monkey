@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Subito+ — temi di finestra | v0.5.0 (2026-08-30)
+  DayNight: la finestra segue l'impostazione del telefono. I colori veri
+  dell'interfaccia arrivano da Compose (vedi Tema.kt); qui si definisce solo
+  cio' che il sistema disegna prima che l'app parta.
+-->
+<resources>
+    <style name="Tema.SubitoPlus" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowBackground">@color/sfondo_finestra</item>
+    </style>
+
+    <!-- Schermata di avvio: prima l'icona su fondo scuro, poi il tema vero. -->
+    <style name="Tema.SubitoPlus.Avvio" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/sfondo_icona</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Tema.SubitoPlus</item>
+    </style>
+</resources>
