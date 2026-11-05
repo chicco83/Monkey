@@ -1,6 +1,6 @@
 # Monkey — manuale
 
-Versione documento: 1.0 — 2026-11-05 14:50 (app v1.66.0)
+Versione documento: 1.0 — 2026-11-05 14:50 (app v1.67.0)
 
 Manuale d'uso sintetico (il vecchio manuale utente era congelato; questo ne e' un riassunto ricavato dal changelog).
 
@@ -10,3 +10,5 @@ Manuale d'uso sintetico (il vecchio manuale utente era congelato; questo ne e' u
 - **Annunci**: preferiti (cuoricino), nascondi, offerte fatte in home ("Le tue proposte", con rilanci del venditore), foto scorrevoli; su Vinted galleria a schermo intero (swipe, pinch, doppio tocco), fino a 20 foto; data "Caricato" vera dove disponibile (≈ = stimata).
 - **Opzioni**: aggiornamenti, Esporta diagnostica, Azzera contatori, backup/importa (nascosti, ricerche, regole).
 - **Problemi**: esporta la diagnostica e mandala per analizzare.
+
+- **Aggiornamento 1.67.0**: chiave di firma cambiata. Dalla 1.66 alla 1.67 non si aggiorna: Salva backup (Opzioni), disinstalla, installa la 1.67, Importa file, rifai il login a Subito e Vinted.

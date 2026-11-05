@@ -1218,17 +1218,60 @@ android {
          * versionName = "1.65.0"
          * --- fine versione precedente ---
          */
-        versionCode = 90
-        versionName = "1.66.0"  // <-- aggiornare a ogni consegna
+        /*
+         * v1.67.0 (2026-11-05) — nuova chiave di firma (vedi signingConfigs).
+         *
+         * --- versione precedente (v1.66.0) ---
+         * versionCode = 90
+         * versionName = "1.66.0"
+         * --- fine versione precedente ---
+         */
+        versionCode = 91
+        versionName = "1.67.0"  // <-- aggiornare a ogni consegna
     }
 
-    // Firma: keystore generato per il progetto, da conservare per tutti gli aggiornamenti futuri.
+    /*
+     * v1.67.0 (2026-11-05) — CAMBIO CHIAVE DI FIRMA. La chiave "subitoplus" era finita
+     * in zip dentro un repository pubblico e la sua password era scritta qui sotto:
+     * va considerata compromessa. Nuova chiave "monkey" (RSA 4096, PKCS12), creata
+     * FUORI dal repo. Il file e le password NON stanno piu' nel codice: si leggono da
+     * "keystore/keystore.properties" (cartella gia' nel .gitignore) con le chiavi
+     * storeFile, storePassword, keyAlias, keyPassword; in alternativa dalle variabili
+     * d'ambiente MONKEY_STOREFILE, MONKEY_STOREPASS, MONKEY_KEYALIAS, MONKEY_KEYPASS.
+     * Se mancano entrambe la build "release" fallisce con un messaggio chiaro invece
+     * di firmare con la chiave sbagliata.
+     *
+     * ATTENZIONE: firma diversa = Android NON installa questa versione come
+     * aggiornamento di quelle firmate con la chiave vecchia: serve disinstallare
+     * e reinstallare (si perdono login, preferiti, ricerche — fare prima "Salva
+     * backup" e poi "Importa file..." come gia' descritto alla v1.14.0). Anche
+     * l'autoupdate da una versione con la chiave vecchia fallira' all'installazione.
+     *
+     * --- versione precedente (fino alla v1.66.0) ---
+     * signingConfigs {
+     *     create("subitoplus") {
+     *         storeFile = file("../keystore/subitoplus.jks")
+     *         storePassword = "subitoplus"
+     *         keyAlias = "subitoplus"
+     *         keyPassword = "subitoplus"
+     *     }
+     * }
+     * --- fine versione precedente ---
+     */
     signingConfigs {
         create("subitoplus") {
-            storeFile = file("../keystore/subitoplus.jks")
-            storePassword = "subitoplus"
-            keyAlias = "subitoplus"
-            keyPassword = "subitoplus"
+            val props = java.util.Properties()
+            val f = rootProject.file("keystore/keystore.properties")
+            if (f.exists()) f.inputStream().use { props.load(it) }
+            fun v(chiave: String, env: String): String? =
+                props.getProperty(chiave) ?: System.getenv(env)
+            val file = v("storeFile", "MONKEY_STOREFILE")
+            if (file != null) {
+                storeFile = rootProject.file("keystore/$file").takeIf { it.exists() } ?: file(file)
+                storePassword = v("storePassword", "MONKEY_STOREPASS")
+                keyAlias = v("keyAlias", "MONKEY_KEYALIAS")
+                keyPassword = v("keyPassword", "MONKEY_KEYPASS")
+            }
         }
     }
 

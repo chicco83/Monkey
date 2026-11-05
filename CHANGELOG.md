@@ -1,11 +1,15 @@
 # Monkey — changelog
 
-Versione documento: **1.0 — 2026-11-05 14:50** (allineato all'app v1.66.0)
+Versione documento: **1.1 — 2026-11-05 16:00** (allineato all'app v1.67.0)
 
 Fonte: `Changelog.kt` (voci mostrate in app dalla 1.36.0). Le versioni fino alla 1.35.0 non hanno voce nel codice: la loro storia e' nei commenti datati dei sorgenti (vedi appendice di `Monkeymemoriacontesto.md`). Piu' recente in cima.
 
 Storico documento:
+- 1.1 (2026-11-05) — aggiunta v1.67.0.
 - 1.0 (2026-11-05) — prima stesura, ricavata da `Changelog.kt` (1.36.0 → 1.66.0).
+
+## v1.67.0 (versionCode 91)
+- Cambiata la chiave di firma (la vecchia era esposta nel repo pubblico). Non si installa sopra le versioni precedenti: backup, disinstallare, reinstallare. Chiave e password fuori dal repo (`keystore/keystore.properties`).
 
 ## v1.66.0 (versionCode 90)
 - Galleria foto Vinted: ora fino a 20 foto (prima solo 5).

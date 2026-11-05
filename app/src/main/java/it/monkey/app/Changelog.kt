@@ -31,6 +31,15 @@ object Changelog {
 
     val VOCI = listOf(
         VoceChangelog(
+            versionCode = 91,
+            versionName = "1.67.0",
+            novita = listOf(
+                "Cambiata la chiave di firma dell'app. Questa versione non " +
+                        "si installa sopra le precedenti: serve disinstallare " +
+                        "e reinstallare (prima fai Salva backup)."
+            )
+        ),
+        VoceChangelog(
             versionCode = 90,
             versionName = "1.66.0",
             novita = listOf(
