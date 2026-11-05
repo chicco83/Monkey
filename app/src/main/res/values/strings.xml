@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  v1.13.0 (2026-08-31) — l'app si chiama Monkey: il nome "Subito+" era troppo
+  vicino al marchio del sito che imita.
+
+  [nota v1.14.0, 2026-08-31] Qui sotto si diceva che l'application id restava
+  invariato per non perdere l'installazione esistente: e' stato vero per
+  questa sola release, perche' quell'id conteneva un dato personale e andava
+  tolto anch'esso (vedi build.gradle.kts, ora e' it.monkey.app). Da qui in
+  avanti l'id non cambia piu', quindi il discorso "cambia solo cio' che si
+  vede" torna valido.
+
+  [versione precedente, v0.1.0 del 2026-08-30]
+  <string name="app_name">Subito+</string>
+  [fine versione precedente]
+-->
+<resources>
+    <string name="app_name">Monkey</string>
+</resources>

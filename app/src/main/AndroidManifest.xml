@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Subito+ — manifest | v0.7.0 (2026-08-30) -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- v0.6.0: avvisi delle ricerche salvate. Chiesto a runtime solo quando
+         si accendono i controlli automatici, non all'installazione. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- v0.7.0: servono al sito dentro il WebView, e si chiedono solo nel
+         momento in cui il sito li usa: la fotocamera per pubblicare un annuncio,
+         la posizione per la ricerca "vicino a me". -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:usesCleartextTraffic="false"
+        android:supportsRtl="true"
+        android:theme="@style/Tema.SubitoPlus">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:theme="@style/Tema.SubitoPlus.Avvio">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- v0.7.0: toccando un link di Subito o Vinted, il sistema offre
+                 anche Subito+. Non e' verificato con assetlinks, quindi resta
+                 una scelta dell'utente e non un'appropriazione del dominio. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.subito.it" />
+                <data android:scheme="https" android:host="subito.it" />
+                <data android:scheme="https" android:host="www.vinted.it" />
+                <data android:scheme="https" android:host="vinted.it" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
