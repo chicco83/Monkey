@@ -1,9 +1,10 @@
 # Monkey — memoria e contesto (per ripartire in una nuova chat)
 
-Versione documento: **2.0 — 2026-11-05 14:50**. Aggiornato al: **v1.66.0** (versionCode 90).
+Versione documento: **2.1 — 2026-11-05 15:20**. Aggiornato al: **v1.66.0** (versionCode 90).
 
 Storico documento:
 - 1.0 (2026-09-02) — stesura a v1.32.0.
+- 2.1 (2026-11-05) — aggiunto §5bis (concetti tecnici 1.56→1.66 ricavati dal transcript: mancavano), §5ter (release/autoupdate), nota sicurezza keystore in `old/`.
 - 2.0 (2026-11-05) — aggiornato fino a v1.66.0; repo ora su GitHub
   (`chicco83/Monkey`, branch `main`) con sorgenti + transcript Cowork; regola
   "mai push" sostituita (vedi §2.2); nuova sezione 5 con sviluppi 1.33→1.66.
@@ -181,6 +182,70 @@ dalla 0.x), `transcript-sessione-monkey.jsonl` (transcript Cowork completo),
   confermato" e' superata dalle 1.64–1.66.
 - Sessione Cowork originale: il transcript completo e' in
   `transcript-sessione-monkey.jsonl` nel repo.
+
+## 5bis. Concetti tecnici 1.56 → 1.66 (dal transcript Cowork; prima assenti qui)
+
+Il transcript (`transcript-sessione-monkey.jsonl`) copre solo l'ultimo
+tratto (da 1.56 a 1.66) piu' un riassunto di sessione; la storia precedente
+sta nei commenti datati dei sorgenti (appendice).
+
+- **Ricerca Vinted = pagina HTML (Next.js)**, non piu' JSON: `/api/v2/catalog/items`
+  da 404 anche con login (confermato dalla diagnostica 1.64) → resta la
+  lettura DOM. `MotoreRicerca.avviaDom` usa una **sessione WebView separata**
+  (`sessioniDom`); card = `[data-testid^="product-item-id-"]`, l'attributo `alt`
+  porta "titolo, Marca: X, Condizioni: Y, Taglia: Z, prezzo, totale".
+  `FonteVinted.scomponiAlt()` e' un parser strutturale (prezzi in coda,
+  etichette note) — 96/96 card lette. `venduto` e `venditore` NON disponibili
+  dalle card DOM.
+- **Lezione 1.50/1.51**: mai navigare la sessione WebView "classica"
+  condivisa (rompe cuoricino/traduzione); le fetch dalla classica vanno bene.
+- **Data annunci Vinted**: gli id Vinted sono un contatore globale monotono
+  (~134 id/s ≈ 11,5M/giorno) → `StimaDataVinted.kt` interpola fra ancore
+  (id, istante): ancore vive da `/catalog?order=newest_first` (ogni ≥20 min),
+  semi fissi (9848892019@1788211276000, 9854267488@1788270609000) e letture
+  "Caricato" (quelle a precisione di un'ora tenute a parte e vincolate fra
+  punti precisi). La data stimata si mostra con "≈".
+- **Data vera**: `DataCaricamentoVinted.kt` (v1.3.0) legge "Caricato";
+  Vinted la da' come testo inglese abbreviato "Uploaded 13 min ago"
+  (da qui il fix 1.65: `cercaPrefisso` + regex con abbreviazioni).
+  Fonte primaria: `https://api.vinted.it/item-details/plugins/<id>/translatable?localize=false`
+  (400 `ANONYMOUS_VIEWER` se si e' persa la login, 200 se loggati);
+  fallback: HTML pubblico `/items/<id>` scaricato in streaming parziale
+  (`MotoreRicerca.paginaParziale`, limiti 4.000.000 car. totali / 300.000 dopo
+  "Caricato"; la data sta in FONDO alla pagina, dopo un grosso dizionario di
+  traduzioni; `senzaScript()` taglia script troncati).
+  `DescrizioniVinted.CACHE_VERSIONE` = "1.59.0".
+- **Controllo login a tre stati** (`StatoRicerca.controllaAccessi`, throttle
+  10 min, retry dopo 30 s se "sconosciuto"): solo 401/403 = non loggato.
+  Causa di molti problemi apparenti: l'app perdeva la login in silenzio.
+  Deciso di NON tornare a versioni precedenti.
+- **Galleria Vinted a schermo intero** (`GalleriaVinted.kt`, utente: "perfetta"):
+  script a document-start che intercetta il click su `/items/<id>` e chiama
+  `Ponte.apriGalleria(json, indice)`; pager + pinch/doppio tocco 1–5x
+  (`@OptIn(ExperimentalFoundationApi)`). 1.66: limite 20 foto.
+- **Da verificare in diagnostica**: righe `[vinted] caricato articolo … (dettaglio)`
+  e `stima-data … letture=` crescente; `page=N` Vinted sembra onorato (page=2
+  = 96 annunci diversi, piu' vecchi) ma non confermato esplicitamente.
+- **Toolchain di consegna** (sessione Cowork): `gradle assembleRelease` →
+  `aapt2 dump badging` (versione) → `apksigner verify --verbose` → grep
+  identita' (`cristiano|zecchi|gmail\.com`, zero risultati) → commit →
+  zip sorgenti. Nel repo il grep andra' fatto sui sorgenti, NON sul `git log`
+  (l'autore dei commit GitHub e' l'account dell'utente).
+
+## 5ter. Release e autoupdate
+
+`Aggiornamenti.kt` legge `GET api.github.com/repos/chicco83/Monkey/releases/latest`
+(senza token → il **repo deve restare pubblico**), confronta `tag_name` (senza
+"v") con `BuildConfig.VERSION_NAME` per componenti numerici e scarica il primo
+allegato `.apk`. Una release per ogni versione: tag `v<versionName>`,
+allegato l'APK firmato. Stato 2026-11-05: ultima release pubblicata **v1.44.0**;
+v1.45→v1.66 NON hanno release (quindi chi e' sotto la 1.66 non vede nulla
+finche' non si pubblica la v1.66.0). Le sessioni cloud non possono creare release
+(HTTP 403 "not permitted for this session type"): si fa dall'utente.
+
+**Sicurezza**: `old/` contiene zip dei sorgenti 1.13–1.34 (e SubitoPlus-*) che
+includono `keystore/subitoplus.jks` in un repo **pubblico**. Vedi raccomandazione
+in chat: rimuoverli (e idealmente ripulire la storia).
 
 ## 6. Come procedere in una nuova chat
 
