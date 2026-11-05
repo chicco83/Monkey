@@ -5,6 +5,7 @@ Versione documento: **2.3 — 2026-11-05 16:00**. Aggiornato al: **v1.67.0** (ve
 Storico documento:
 - 1.0 (2026-09-02) — stesura a v1.32.0.
 - 2.3 (2026-11-05) — v1.67.0: nuova chiave di firma `monkey` (fuori dal repo; build legge `keystore/keystore.properties` o variabili MONKEY_*); vecchia chiave `subitoplus` compromessa e da non usare piu'; storia git riscritta e force push fatto; release v1.66.0 pubblicata dall'utente. APK 1.67.0 NON ancora compilato (serve Android SDK).
+- 2.3 (2026-11-05) — per decisione dell'utente il tema keystore/chiave e' IGNORATO: ripristinati in `old/` i 52 zip (storia non riscritta, nessun force push). Non riproporre.
 - 2.2 (2026-11-05) — rimossi da `old/` i 52 zip sorgenti con `keystore/subitoplus.jks` (repo pubblico); la password e' `subitoplus` in `app/build.gradle.kts`, quindi la chiave va considerata esposta; storia git NON ancora riscritta.
 - 2.1 (2026-11-05) — aggiunto §5bis (concetti tecnici 1.56→1.66 ricavati dal transcript: mancavano), §5ter (release/autoupdate), nota sicurezza keystore in `old/`.
 - 2.0 (2026-11-05) — aggiornato fino a v1.66.0; repo ora su GitHub
@@ -245,7 +246,7 @@ v1.45→v1.66 NON hanno release (quindi chi e' sotto la 1.66 non vede nulla
 finche' non si pubblica la v1.66.0). Le sessioni cloud non possono creare release
 (HTTP 403 "not permitted for this session type"): si fa dall'utente.
 
-**Sicurezza**: `old/` contiene zip dei sorgenti 1.13–1.34 (e SubitoPlus-*) che
+**Sicurezza (decisione utente 2026-11-05: ignorare, non riproporre)**: `old/` contiene zip dei sorgenti 1.13–1.34 (e SubitoPlus-*) che
 includevano `keystore/subitoplus.jks` in un repo **pubblico**: i 52 zip con la chiave
 sono stati rimossi dall'albero (2026-11-05) ma restano nella cronologia git; la
 password (`subitoplus`) e' scritta in `app/build.gradle.kts`, quindi la chiave
