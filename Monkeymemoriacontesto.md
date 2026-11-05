@@ -1,6 +1,12 @@
 # Monkey — memoria e contesto (per ripartire in una nuova chat)
 
-Aggiornato al: **v1.32.0** (versionCode 56), 2026-09-02.
+Versione documento: **2.0 — 2026-11-05 14:50**. Aggiornato al: **v1.66.0** (versionCode 90).
+
+Storico documento:
+- 1.0 (2026-09-02) — stesura a v1.32.0.
+- 2.0 (2026-11-05) — aggiornato fino a v1.66.0; repo ora su GitHub
+  (`chicco83/Monkey`, branch `main`) con sorgenti + transcript Cowork; regola
+  "mai push" sostituita (vedi §2.2); nuova sezione 5 con sviluppi 1.33→1.66.
 
 Questo file serve a far ripartire una nuova conversazione esattamente da dove
 questa si e' fermata, senza dover rileggere l'intera cronologia della chat.
@@ -38,9 +44,16 @@ un-persona, in coppia con Claude: ogni richiesta finisce con un APK firmato
    commenti, nei messaggi di commit o nell'identita' git. Prima di ogni
    consegna: `grep -rniE "cristiano|zecchi|gmail\.com"` sui sorgenti deve
    dare zero risultati.
-2. **Mai `git push`** — istruzione permanente dell'utente ("non sprecare
-   token a tentare il push"): il push lo fa l'utente dal proprio computer
-   usando lo zip dei sorgenti consegnato.
+2. **Git (aggiornata 2026-11-05)**: il vecchio "mai git push" e' SUPERATO.
+   Il repository e' su GitHub (`chicco83/Monkey`) e si lavora **sempre sul
+   branch `main`**. A fine attivita': `git pull --rebase`, commit solo dei
+   file modificati dalla sessione (per nome, mai `git add -A`), messaggio
+   descrittivo, `git push`. Piu' sessioni (locali/cloud) lavorano sugli
+   stessi documenti: in caso di conflitto su un `.md` unire a mano tenendo
+   entrambe le modifiche. Il keystore (`keystore/subitoplus.jks`) resta
+   FUORI dal repo (e' nel `.gitignore`): lo zip `SubitoPlus-sorgenti-v0.1.0`
+   dell'utente lo contiene; senza di esso un APK non si firma come
+   aggiornamento.
 3. **Versioning ferreo**: ogni modifica bump di `versionCode`/`versionName`
    in `app/build.gradle.kts`, con un blocco di commento datato che spiega
    il perche'. Nessuna consegna senza bump.
@@ -109,74 +122,75 @@ un-persona, in coppia con Claude: ogni richiesta finisce con un APK firmato
   strumenti diagnostici che l'utente lancia dal menu per catturare traffico
   reale ("sonde") quando serve una prova per un fix.
 
-## 5. Stato attuale (fine di questo tratto di lavoro)
+## 5. Stato attuale (v1.66.0, 2026-11-05)
 
-**v1.32.0**, versionCode 56, consegnata (APK + sorgenti) in chat; Drive non
-raggiungibile, come da nota sopra.
+**v1.66.0**, versionCode 90. Ultima consegna: galleria foto Vinted portata
+a 20 foto (prima 5; il codice non aveva un limite esplicito, si presume che
+le foto oltre le prime 5 non fossero nella pagina letta: aggiunta lettura
+dell'elenco foto dai dati della pagina — **non verificata su pagina reale**).
+APK compilato e firmato con il keystore dell'utente (impronta verificata)
+ma **non provato su telefono**. Se restano 5 foto: serve la diagnostica.
 
-Contenuto della v1.32.0 (le due ultime richieste dell'utente, entrambe
-risolte con prove da una sonda — `bdc42069-api.json`, conversazione Vinted
-con "jhnmadsu", annuncio "Rtx 3060 gaming oc 12gb - Gigabyte"):
+Nel repo: `Monkey-1.66.0.apk`, `Monkey-1.35.0.apk`, `old/` (release storiche
+dalla 0.x), `transcript-sessione-monkey.jsonl` (transcript Cowork completo),
+`CHANGELOG.md`, `CLAUDE.md`, `MANUAL.md`. Dettaglio per versione:
+`CHANGELOG.md` (ricavato da `Changelog.kt`).
 
-1. **Rilanci del venditore su Vinted riconosciuti.** Prima, un'offerta mia
-   rifiutata seguita da un rilancio del venditore faceva sparire l'annuncio
-   dalla lista attiva: `leggiConversazioneVinted()` (in `Offerte.kt`)
-   guardava solo i messaggi `offer_request_message` (le mie offerte) e
-   ignorava in silenzio `offer_message` (i rilanci, un tipo distinto senza
-   `status_title`). Ora i messaggi si smistano per `user_id` confrontato
-   con `buyer_id`/`seller_id` della transazione, non piu' per solo tipo;
-   nuovo campo `Offerta.controproposta` (centesimi del rilancio, 0 se
-   nessuno); `prezzoAnnuncio` ora viene da `entity.original_price` (stabile)
-   invece che da `transaction.offer_price` (che si e' scoperto diventare
-   l'importo corrente/il rilancio stesso, non piu' il prezzo di listino,
-   una volta che un rilancio esiste). La card "Le tue proposte"
-   (`RigaOfferta` in `SchermataRicerca.kt`) mostra ora entrambe le cifre.
-2. **Scorrimento foto nella vista estesa.** `Annuncio` porta ora tutte le
-   foto (`immagini: List<String>`), non solo la prima; la vista estesa
-   (`RigaAnnuncio`, ramo non compatto) usa un `HorizontalPager` con
-   indicatore a pallini quando ce n'e' piu' di una. **Su Subito e' un dato
-   certo** (stesso array `images` gia' letto in parte, solo esteso a tutti
-   gli elementi). **Su Vinted e' un'estensione non ancora confermata da
-   una sonda col contenuto vero**: si presume che il campo `photos`
-   (plurale, visto finora solo come NOME di campo in un elenco chiavi di
-   diagnostica esportata) abbia la stessa forma del gia' verificato
-   `photo` (singolare, con `.url`) — se restasse vuoto o sbagliato, la
-   vista ripiega da sola su una foto singola, nessun rischio di crash.
-   **Prossimo passo se serve confermarlo**: una sonda API mentre si scorre
-   un elenco risultati Vinted, per vedere il contenuto vero di `photos`.
-   La seconda meta' della segnalazione originale dell'utente — "la
-   descrizione appare solo per Subito" — **non e' un bug**: il catalogo di
-   ricerca Vinted non espone quel testo (mai, non da oggi), e non c'e' modo
-   di correggerlo senza una chiamata aggiuntiva per articolo (non fatta:
-   nessuna richiesta esplicita dell'utente in tal senso finora).
+### Sviluppi 1.33 → 1.66 in sintesi (dettaglio nel CHANGELOG.md)
+
+- **1.33–1.35**: nessuna voce in app (changelog nato alla 1.36).
+- **1.36–1.39 — controllo ricerche salvate**: WebView di background senza
+  genitore (1.37) e chiamate fuori dal main thread (1.38) erano le cause del
+  "non trova mai nulla"; **confermato funzionante in 1.39**, notifiche ok,
+  il tocco apre la ricerca con "solo nuovi". Icone/menu ritoccati.
+- **1.40–1.51 — descrizione/traduzione annunci Vinted**: la descrizione sta
+  nella pagina dell'annuncio (non in un endpoint a parte, 1.43); 1.44 Vinted
+  torna a 30 per pagina (60 dava 500; Subito resta 60); 1.45 fix 403
+  preferiti (header anti-CSRF); 1.46 rilevamento logout + guida primo avvio;
+  1.47–1.51 tentativi sulla traduzione: causa trovata in 1.50 (sessione sulla
+  home invece che sull'annuncio) ma in 1.51 si e' tornati al testo originale:
+  **traduzione ancora aperta**. 1.41: stop al rimescolamento in scroll, filtro
+  "entro 60 giorni" attivo di default.
+- **1.52–1.58 — Vinted ha ritirato la rotta JSON degli elenchi (404)**:
+  1.52–1.55 solo sonde; 1.56 la ricerca ora **legge la pagina HTML vera**
+  (scorrimento oltre la prima pagina da confermare, "Venduto" non
+  riconosciuto in elenco); 1.57–1.58 fix marca assente, prezzo/titolo con
+  taglia, data **stimata** dal numero annuncio (≈).
+- **1.59–1.62 — data "Caricato" Vinted**: letta dalla pagina pubblica
+  dell'annuncio (la via API e' chiusa), poi corretti troncamenti.
+- **1.61**: scarico ridotto alla sola parte con data+descrizione; ogni data
+  vera corregge la stima degli altri.
+- **1.63**: avviso in home se la sessione Subito/Vinted e' scaduta (tasto
+  Accedi). **1.64**: galleria a schermo intero sulle foto Vinted (swipe,
+  pinch, doppio tocco). **1.65**: data vera "Caricato" Vinted sostituisce la
+  stima. **1.66**: 20 foto.
 
 ### Cose aperte / in sospeso
 
-- **Feedback non ancora arrivato**: se il fix del rilancio Vinted e lo
-  scorrimento foto funzionano davvero sul campo (specialmente il caso
-  Vinted `photos[]`, inferenza non confermata).
-- **Guardia anti-doppio-avvio (v1.31.0)**: aggiunta ma non ancora
-  confermata dall'utente come risolutiva (serviva un nuovo
-  `controllo-log.txt` pulito per dirlo con certezza).
-- **Icona "hai scritto al venditore"** (v1.28.0, poi tolta in v1.31.0):
-  in pausa. Serve una sonda che catturi (a) una conversazione Vinted
-  **senza** offerta (per vedere la sua forma JSON) e (b) un endpoint
-  Subito che elenchi le conversazioni chat in generale (oggi si vede solo
-  il conteggio non letti e le transazioni P2P). Quando arrivano: icona a
-  forma di busta (`Icons.Filled.Email`), mostrata SOLO per messaggi senza
-  offerta di prezzo (se c'e' un'offerta, il testo con l'importo basta gia').
-- **Filtro "scarta venditori senza recensioni"**: attivo su entrambe le
-  fonti dalla v1.30.0, nessun problema noto.
+- **Verifica sul campo della 1.66** (20 foto Vinted) — mai provata.
+- **Traduzione descrizione Vinted** (aperta da 1.47, vedi sopra).
+- **Vinted via HTML (1.56+)**: scroll oltre la prima pagina, stato
+  "Venduto" in elenco: da confermare.
+- Pendenze storiche ancora valide: icona "hai scritto al venditore" (serve
+  sonda su conversazione Vinted senza offerta + endpoint chat Subito);
+  403 sul rimuovere preferiti Vinted (1.45 ha corretto la *pagina* preferiti;
+  verificare la rimozione); guardia anti-doppio-avvio 1.31 (probabilmente
+  superata dal fix 1.37–1.39 sul controllo).
+- Contenuto 1.32.0 (rilanci venditore Vinted, `Offerta.controproposta`,
+  `HorizontalPager` foto vista estesa) resta valido; la nota "photos[] non
+  confermato" e' superata dalle 1.64–1.66.
+- Sessione Cowork originale: il transcript completo e' in
+  `transcript-sessione-monkey.jsonl` nel repo.
 
 ## 6. Come procedere in una nuova chat
 
 1. Leggere questo file per il contesto generale.
 2. Se serve il dettaglio esatto di una funzione, leggere direttamente il
-   sorgente in `/home/claude/subitoplus/app/src/main/java/it/monkey/app/`
+   sorgente in ``app/src/main/java/it/monkey/app/` nel repo`
    (questo file ne riassume la storia, non sostituisce il codice).
 3. Verificare `git log --oneline -5` per la punta attuale del branch.
 4. Rispettare sempre le regole permanenti del §2 (niente nome/email reali,
-   niente push, versioning, correzioni con storico, evidenza prima di
+   git su `main` con pull --rebase e push, versioning, correzioni con storico, evidenza prima di
    inventare).
 5. Se l'utente riporta un problema nuovo, il riflesso e' chiedere/aspettare
    una sonda (se serve un dato che oggi non si legge) prima di scrivere
