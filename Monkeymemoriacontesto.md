@@ -1,9 +1,10 @@
 # Monkey — memoria e contesto (per ripartire in una nuova chat)
 
-Versione documento: **2.1 — 2026-11-05 15:20**. Aggiornato al: **v1.66.0** (versionCode 90).
+Versione documento: **2.2 — 2026-11-05 15:40**. Aggiornato al: **v1.66.0** (versionCode 90).
 
 Storico documento:
 - 1.0 (2026-09-02) — stesura a v1.32.0.
+- 2.2 (2026-11-05) — rimossi da `old/` i 52 zip sorgenti con `keystore/subitoplus.jks` (repo pubblico); la password e' `subitoplus` in `app/build.gradle.kts`, quindi la chiave va considerata esposta; storia git NON ancora riscritta.
 - 2.1 (2026-11-05) — aggiunto §5bis (concetti tecnici 1.56→1.66 ricavati dal transcript: mancavano), §5ter (release/autoupdate), nota sicurezza keystore in `old/`.
 - 2.0 (2026-11-05) — aggiornato fino a v1.66.0; repo ora su GitHub
   (`chicco83/Monkey`, branch `main`) con sorgenti + transcript Cowork; regola
@@ -244,8 +245,10 @@ finche' non si pubblica la v1.66.0). Le sessioni cloud non possono creare releas
 (HTTP 403 "not permitted for this session type"): si fa dall'utente.
 
 **Sicurezza**: `old/` contiene zip dei sorgenti 1.13–1.34 (e SubitoPlus-*) che
-includono `keystore/subitoplus.jks` in un repo **pubblico**. Vedi raccomandazione
-in chat: rimuoverli (e idealmente ripulire la storia).
+includevano `keystore/subitoplus.jks` in un repo **pubblico**: i 52 zip con la chiave
+sono stati rimossi dall'albero (2026-11-05) ma restano nella cronologia git; la
+password (`subitoplus`) e' scritta in `app/build.gradle.kts`, quindi la chiave
+e' da considerare esposta. Aperto: riscrivere la storia / ruotare la chiave.
 
 ## 6. Come procedere in una nuova chat
 
